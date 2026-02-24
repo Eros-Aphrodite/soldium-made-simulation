@@ -300,7 +300,11 @@ function App() {
               <div className="el-ion anion">OH⁻</div>
             </div>
 
-            <div className="product-cluster" />
+            {/* stylised electrode face, labeled by focus */}
+            <div className="product-cluster">
+              {reactionFocus === 'cathode' && '−'}
+              {reactionFocus === 'anode' && '+'}
+            </div>
           </div>
         </div>
       </div>
