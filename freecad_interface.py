@@ -99,7 +99,17 @@ class FreeCADBridge:
             for alias, v in alias_map.items():
                 if v is None:
                     continue
-                changed = self._set_sheet_alias_value(sheet, alias, v) or changed
+                if self._set_sheet_alias_value(sheet, alias, v):
+                    changed = True
+
+            # Fallback for your current layout: if aliases fail for Na_cum_kg,
+            # also try writing directly to B4 so you can see the value move.
+            if not changed and values.get("cumulative_na_kg") is not None:
+                try:
+                    sheet.set("B4", str(values["cumulative_na_kg"]))
+                    changed = True
+                except Exception:
+                    pass
 
             if changed:
                 doc.recompute()
