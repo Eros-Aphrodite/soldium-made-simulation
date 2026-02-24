@@ -31,6 +31,23 @@ class SodiumLossConfig:
     high_temp_c: float = 700.0
 
 
+@dataclass
+class ReactionStoichConfig:
+    """
+    Stoichiometry and molar masses for the global chlor-alkali reaction:
+
+        2 NaCl + 2 H2O -> Cl2 + H2 + 2 NaOH
+
+    We use the Faraday-based sodium equivalents to infer NaOH, Cl2 and H2.
+    """
+
+    # Molar masses in g/mol
+    molar_mass_na: float = 22.99
+    molar_mass_naoh: float = 40.00
+    molar_mass_cl2: float = 70.906
+    molar_mass_h2: float = 2.016
+
+
 def sodium_loss_fractions(temp_c: float, cfg: SodiumLossConfig) -> Tuple[float, float, float]:
     """
     Compute (f_collected, f_recombined, f_evap) based on cell temperature.
@@ -58,6 +75,7 @@ class PlantConfig:
     electrical: ElectricalConfig = field(default_factory=ElectricalConfig)
     electrodes: ElectrodeConfig = field(default_factory=ElectrodeConfig)
     sodium_losses: SodiumLossConfig = field(default_factory=SodiumLossConfig)
+    reaction_stoich: ReactionStoichConfig = field(default_factory=ReactionStoichConfig)
 
     # Economic parameters for finance calculations
     power_cost_per_kwh: float = 0.12
@@ -71,6 +89,9 @@ class PlantState:
     time_hours: float = 0.0
     electrode_state: ElectrodeState = field(default_factory=ElectrodeState)
     cumulative_na_produced_kg: float = 0.0
+    cumulative_naoh_kg: float = 0.0
+    cumulative_cl2_kg: float = 0.0
+    cumulative_h2_kg: float = 0.0
     cumulative_revenue: float = 0.0
     cumulative_cost: float = 0.0
 
@@ -131,6 +152,22 @@ class SodiumPlant:
             efficiency=eff,
         )
 
+        # Map sodium equivalents to NaOH / Cl2 / H2 using the global reaction:
+        # 2 NaCl + 2 H2O -> Cl2 + H2 + 2 NaOH
+        # Moles of Na participating equals moles of Na in NaOH produced.
+        rs = self.cfg.reaction_stoich
+        na_theoretical_mol = max(0.0, na_theoretical_kg * 1000.0 / rs.molar_mass_na)
+        # For every 2 Na (2 Na+), stoichiometry produces:
+        #   2 NaOH, 1 Cl2, 1 H2
+        # So per mole Na: 1 NaOH, 0.5 Cl2, 0.5 H2.
+        naoh_mol = na_theoretical_mol * 1.0
+        cl2_mol = na_theoretical_mol * 0.5
+        h2_mol = na_theoretical_mol * 0.5
+
+        naoh_kg = naoh_mol * rs.molar_mass_naoh / 1000.0
+        cl2_kg = cl2_mol * rs.molar_mass_cl2 / 1000.0
+        h2_kg = h2_mol * rs.molar_mass_h2 / 1000.0
+
         # 4) Get an approximate cell temperature from DWSIM or assume a fixed value.
         # For now, we use a placeholder temperature until Automation is wired:
         cell_temp_c = 600.0
@@ -153,6 +190,9 @@ class SodiumPlant:
         # 6) Cumulative updates
         self.state.time_hours += dt_hours
         self.state.cumulative_na_produced_kg += na_collected_kg
+        self.state.cumulative_naoh_kg += naoh_kg * f_collected
+        self.state.cumulative_cl2_kg += cl2_kg * f_collected
+        self.state.cumulative_h2_kg += h2_kg * f_collected
         self.state.cumulative_revenue += revenue
         self.state.cumulative_cost += cost
 
@@ -171,10 +211,16 @@ class SodiumPlant:
             "na_collected_kg": na_collected_kg,
             "na_recombined_kg": na_recombined_kg,
             "na_evap_kg": na_evap_kg,
+            "naoh_step_kg": naoh_kg * f_collected,
+            "cl2_step_kg": cl2_kg * f_collected,
+            "h2_step_kg": h2_kg * f_collected,
             "step_revenue": revenue,
             "step_cost": cost,
             "step_margin": margin,
             "cumulative_na_kg": self.state.cumulative_na_produced_kg,
+            "cumulative_naoh_kg": self.state.cumulative_naoh_kg,
+            "cumulative_cl2_kg": self.state.cumulative_cl2_kg,
+            "cumulative_h2_kg": self.state.cumulative_h2_kg,
             "cumulative_revenue": self.state.cumulative_revenue,
             "cumulative_cost": self.state.cumulative_cost,
         }
