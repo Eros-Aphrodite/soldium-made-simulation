@@ -1,11 +1,10 @@
 """End-to-end MVP orchestrator for the sodium production simulation.
 
-This script now uses the higher-level `SodiumPlant` model which ties together:
+This script uses the higher-level `SodiumPlant` model which ties together:
 - core Faraday math
 - electrical constraints
 - electrode life model
 - sodium loss fractions
-- DWSIM / FreeCAD bridges (in dry-run mode unless configured)
 
 Run it from a terminal:
     python process_mvp.py

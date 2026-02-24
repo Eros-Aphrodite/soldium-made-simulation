@@ -1,65 +1,82 @@
-## Sodium Production MVP (DWSIM + FreeCAD + Python)
+## Sodium Plant Digital Twin – Python + Web 3D
 
-**Goal**: provide a minimal but end‑to‑end scaffold that links:
-- **Python** – central logic and orchestration
-- **DWSIM** – thermodynamics and process simulation
-- **FreeCAD** – 3D representation of the electrolysis cell
+This project is a **pure‑Python sodium plant simulation core** with a **web‑based 3D visualisation**.  
+Legacy DWSIM and FreeCAD integration files have been removed; everything now runs with Python + FastAPI + React/Three.js.
 
-### Files
+### Python core
 
-- `sodium_logic.py` – core Faraday‑based sodium production and simple finance math.
-- `dwsim_interface.py` – small bridge to DWSIM Automation (falls back to dry‑run).
-- `freecad_interface.py` – small bridge to FreeCAD (falls back to dry‑run).
-- `process_mvp.py` – orchestrator that ties everything together.
-- `requirements.txt` – Python package dependencies.
+- `sodium_logic.py` – Faraday‑based sodium production and simple finance helpers.
+- `electrical_model.py` – DC supply and transformer/rectifier behaviour, limits, and power.
+- `electrode_model.py` – electrode wear, resistance multiplier, and efficiency vs. life.
+- `plant_model.py` – central `SodiumPlant` class (time‑step simulation, no DWSIM/FreeCAD).
+- `process_mvp.py` – CLI driver to run a simple time‑based simulation in the terminal.
+- `api_server.py` – FastAPI server exposing:
+  - `POST /api/reset`
+  - `POST /api/step`
+  - `GET /api/state`
+  - `POST /api/reaction_time`
+- `battery_matbg_integration.py` – optional link to an external Na‑ion battery model (MATBG project).
+- `requirements.txt` – Python dependencies.
 
-### Setup
+### Web front‑end (`sodium-frontend/`)
 
-1. **Install Python dependencies** (from this folder):
+- React + TypeScript.
+- `@react-three/fiber` + `@react-three/drei` + `three` for 3D:
+  - Castner‑style electrolysis cell with transparent melt.
+  - Cathode/anode geometry with +/− labels.
+  - Gas collection trains (H₂ / O₂), labeled tanks, and a connected gas well.
+  - Animated gas bubbles in the cell and animated gas flow through pipes.
+- Side panel UI:
+  - Inputs: current (A), Δt (hours), NaOH batch (kg).
+  - Controls: Reset, Step, +10 Steps, Run/Pause, Estimate time.
+  - Live state: time, Na/NaOH/Cl₂/H₂ totals, revenue, cost, operating point.
+- Microscopic reaction panel:
+  - Cathode view: `Na⁺ + e⁻ → Na` animation with labeled ions/electrons and electrode face.
+  - Anode view: `OH⁻ → O₂ + e⁻` style oxidation animation.
+  - Electrolyte view: Na⁺ / OH⁻ ion motion between electrodes.
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+### Install Python dependencies
 
-2. **Prepare DWSIM flowsheet** (optional but recommended):
-
-   - In DWSIM, create a simple flowsheet where molten salt enters a **Conversion Reactor**
-     and produces sodium and by‑products.
-   - Save it as `process.dwxml` in this folder.
-   - When you are ready to use Automation, update `DWSIMConfig` in `dwsim_interface.py`
-     with the correct `dwsim_bin_path` and replace the TODO comments with real calls.
-
-3. **FreeCAD**:
-
-   - Install FreeCAD and verify that its Python console can run:
-
-     ```python
-     import Part
-     box = Part.makeBox(10, 10, 10)
-     Part.show(box)
-     ```
-
-   - If you run `process_mvp.py` **inside** FreeCAD's Python environment, the 3D
-     model will be created as a document and saved as `sodium_cell_mvp.FCStd`.
-   - If FreeCAD modules are not importable, the script will simply print what it
-     would have modelled (no crash).
-
-### Running the MVP
-
-From a normal terminal in this folder:
+From the project root (`F:\sodium`):
 
 ```bash
+python -m pip install -r requirements.txt
+```
+
+### Run the pure‑Python MVP (terminal only)
+
+```bash
+cd F:\sodium
 python process_mvp.py
 ```
 
-You should see:
-- the calculated sodium production (kg)
-- a basic revenue/cost/margin calculation
-- either a note that FreeCAD/DWSIM ran in dry‑run mode, or confirmation that
-  a 3D cell model / Automation call was made.
+You’ll see sodium production, power, and finance figures printed per time step.
 
-From here you can:
-- plug real DWSIM variables into `DWSIMBridge.run_electrolysis`
-- enrich the 3D model in `FreeCADBridge.build_simple_cell`
-- wrap `run_mvp` in a PyQt6 GUI if desired.
+### Run the web 3D simulator
+
+1. Start the API server:
+
+   ```bash
+   cd F:\sodium
+   python api_server.py
+   ```
+
+2. In another terminal, start the front‑end:
+
+   ```bash
+   cd F:\sodium\sodium-frontend
+   npm install
+   npm run dev
+   ```
+
+3. Open the browser at:
+
+```text
+http://localhost:5173
+```
+
+You can now:
+- Adjust current, time step, and NaOH feed.
+- Step or run the simulation.
+- Watch the 3D plant and microscopic reaction views respond to the simulation state.
 

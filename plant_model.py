@@ -1,19 +1,16 @@
-"""High-level plant model tying together electrical, electrodes, DWSIM, and FreeCAD.
+"""High-level plant model tying together electrical, electrodes, and core chemistry.
 
-This is a simplified "digital twin" core that runs a time-based simulation.
-It is designed to work even when DWSIM and FreeCAD are not available, by
-falling back to dry-run behaviour through the bridge modules.
+This is a simplified "digital twin" core that runs a time-based simulation using
+pure Python models. External tools like process simulators or CAD are no longer
+required at runtime; visualisation is handled by the separate web front-end.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Dict, Tuple
-
-from dwsim_interface import DWSIMBridge, DWSIMConfig
 from electrical_model import ElectricalConfig, ElectricalState, compute_electrical_state
 from electrode_model import ElectrodeConfig, ElectrodeState
-from freecad_interface import FreeCADBridge, FreeCADConfig
 from sodium_logic import calculate_finances, calculate_sodium_production
 
 
@@ -102,14 +99,9 @@ class SodiumPlant:
     def __init__(
         self,
         cfg: PlantConfig | None = None,
-        dwsim_cfg: DWSIMConfig | None = None,
-        freecad_cfg: FreeCADConfig | None = None,
     ) -> None:
         self.cfg = cfg or PlantConfig()
         self.state = PlantState()
-
-        self.dwsim = DWSIMBridge(dwsim_cfg or DWSIMConfig())
-        self.freecad = FreeCADBridge(freecad_cfg or FreeCADConfig())
 
     # ------------------------------------------------------------------ #
     # Core step logic
@@ -168,8 +160,9 @@ class SodiumPlant:
         cl2_kg = cl2_mol * rs.molar_mass_cl2 / 1000.0
         h2_kg = h2_mol * rs.molar_mass_h2 / 1000.0
 
-        # 4) Get an approximate cell temperature from DWSIM or assume a fixed value.
-        # For now, we use a placeholder temperature until Automation is wired:
+        # 4) Approximate cell temperature.
+        # For now we use a fixed representative value; a future version could
+        # couple this to a detailed thermal model.
         cell_temp_c = 600.0
 
         f_collected, f_recombined, f_evap = sodium_loss_fractions(cell_temp_c, self.cfg.sodium_losses)
@@ -196,22 +189,7 @@ class SodiumPlant:
         self.state.cumulative_revenue += revenue
         self.state.cumulative_cost += cost
 
-        # 7) Update FreeCAD for visualization (if available)
-        # Push a richer set of values into the FreeCAD Params spreadsheet if present.
-        # This allows the 3D model to reflect process outputs (Na/NaOH/Cl2/H2) and
-        # operating point (current/voltage/power).
-        self.freecad.update_from_simulation(
-            {
-                "cumulative_na_kg": self.state.cumulative_na_produced_kg,
-                "cumulative_naoh_kg": self.state.cumulative_naoh_kg,
-                "cumulative_cl2_kg": self.state.cumulative_cl2_kg,
-                "cumulative_h2_kg": self.state.cumulative_h2_kg,
-                "actual_current_a": elec_state.actual_current_a,
-                "cell_voltage_v": elec_state.cell_voltage_v,
-                "dc_power_kw": elec_state.dc_power_kw,
-            }
-        )
-
+        # 7) Return a rich snapshot of the current step.
         return {
             "time_hours": self.state.time_hours,
             "requested_current_a": requested_current_a,
