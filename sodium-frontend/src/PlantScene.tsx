@@ -13,6 +13,143 @@ type PlantSceneProps = {
   onElectrolyteClick?: () => void;
 };
 
+function polylinePointAt(points: THREE.Vector3[], u: number): THREE.Vector3 {
+  if (points.length === 0) return new THREE.Vector3();
+  if (points.length === 1) return points[0].clone();
+
+  const clamped = ((u % 1) + 1) % 1;
+  const segLens: number[] = [];
+  let total = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    const d = points[i].distanceTo(points[i + 1]);
+    segLens.push(d);
+    total += d;
+  }
+  const target = clamped * total;
+  let acc = 0;
+  for (let i = 0; i < segLens.length; i++) {
+    const next = acc + segLens[i];
+    if (target <= next || i === segLens.length - 1) {
+      const t = segLens[i] <= 1e-9 ? 0 : (target - acc) / segLens[i];
+      return points[i].clone().lerp(points[i + 1], t);
+    }
+    acc = next;
+  }
+  return points[points.length - 1].clone();
+}
+
+const TubePipe: React.FC<{
+  points: [number, number, number][];
+  radius: number;
+  color: string;
+  emissive?: string;
+  emissiveIntensity?: number;
+  opacity?: number;
+}> = ({ points, radius, color, emissive, emissiveIntensity = 0.0, opacity = 1.0 }) => {
+  const curve = useMemo(() => {
+    const pts = points.map((p) => new THREE.Vector3(p[0], p[1], p[2]));
+    return new THREE.CatmullRomCurve3(pts, false, 'centripetal');
+  }, [points]);
+
+  const geom = useMemo(() => new THREE.TubeGeometry(curve, 64, radius, 14, false), [curve, radius]);
+
+  return (
+    <mesh geometry={geom}>
+      <meshStandardMaterial
+        color={color}
+        metalness={0.4}
+        roughness={0.35}
+        emissive={emissive ?? '#000000'}
+        emissiveIntensity={emissiveIntensity}
+        transparent={opacity < 1}
+        opacity={opacity}
+      />
+    </mesh>
+  );
+};
+
+const GasFlowParticles: React.FC<{
+  points: [number, number, number][];
+  count: number;
+  color: string;
+  speed: number;
+  running: boolean;
+  size: number;
+}> = ({ points, count, color, speed, running, size }) => {
+  const meshRef = useRef<THREE.InstancedMesh | null>(null);
+  const dummy = useMemo(() => new THREE.Object3D(), []);
+  const pts = useMemo(() => points.map((p) => new THREE.Vector3(p[0], p[1], p[2])), [points]);
+
+  useFrame(({ clock }) => {
+    if (!meshRef.current) return;
+
+    const mat = meshRef.current.material as THREE.MeshStandardMaterial;
+    const targetOpacity = running ? 0.95 : 0.0;
+    mat.opacity += (targetOpacity - mat.opacity) * 0.15;
+    mat.transparent = true;
+
+    if (!running) return;
+
+    const t = clock.getElapsedTime();
+    for (let i = 0; i < count; i++) {
+      const u = (t * speed + i / count) % 1;
+      const p = polylinePointAt(pts, u);
+      dummy.position.copy(p);
+      dummy.scale.set(size, size, size);
+      dummy.updateMatrix();
+      meshRef.current.setMatrixAt(i, dummy.matrix);
+    }
+    meshRef.current.instanceMatrix.needsUpdate = true;
+  });
+
+  return (
+    <instancedMesh ref={meshRef} args={[undefined as any, undefined as any, count]}>
+      <sphereGeometry args={[1, 10, 10]} />
+      <meshStandardMaterial color={color} transparent opacity={0.0} />
+    </instancedMesh>
+  );
+};
+
+const GasPipesAndFlow: React.FC<{ running: boolean; currentA: number }> = ({ running, currentA }) => {
+  // Speeds scale gently with current
+  const currentScaled = Math.min(Math.abs(currentA) / 10_000, 2.0);
+  const baseSpeed = 0.22 + currentScaled * 0.18;
+
+  // World-space paths: hood -> manifold -> tanks/well
+  const hoodOut: [number, number, number] = [0.9, 3.6, 0.0];
+  const manifold: [number, number, number] = [1.6, 2.2, -0.4];
+  const o2In: [number, number, number] = [2.8, 1.95, -2.2];
+  const h2In: [number, number, number] = [4.0, 1.95, -1.8];
+  const wellIn: [number, number, number] = [6.1, 2.0, -1.1];
+
+  const trunk: [number, number, number][] = [hoodOut, [1.2, 3.0, -0.6], manifold];
+  const toO2: [number, number, number][] = [manifold, [2.1, 2.05, -1.2], o2In];
+  const toH2: [number, number, number][] = [manifold, [2.9, 2.0, -1.0], h2In];
+  const toWell: [number, number, number][] = [manifold, [3.9, 2.0, -0.6], wellIn];
+
+  return (
+    <group>
+      {/* Pipes */}
+      <TubePipe points={trunk} radius={0.08} color="#94a3b8" emissive="#38bdf8" emissiveIntensity={running ? 0.25 : 0.0} />
+      <TubePipe points={toO2} radius={0.07} color="#60a5fa" emissive="#60a5fa" emissiveIntensity={running ? 0.25 : 0.0} opacity={0.85} />
+      <TubePipe points={toH2} radius={0.07} color="#22c55e" emissive="#22c55e" emissiveIntensity={running ? 0.25 : 0.0} opacity={0.85} />
+      <TubePipe points={toWell} radius={0.075} color="#a3a3a3" emissive="#e5e7eb" emissiveIntensity={running ? 0.12 : 0.0} opacity={0.7} />
+
+      {/* Flow particles (clearly show gas moving) */}
+      <GasFlowParticles points={trunk} count={90} color="#e0f2fe" speed={baseSpeed} running={running} size={0.06} />
+      <GasFlowParticles points={toO2} count={70} color="#93c5fd" speed={baseSpeed * 1.2} running={running} size={0.055} />
+      <GasFlowParticles points={toH2} count={70} color="#86efac" speed={baseSpeed * 1.2} running={running} size={0.055} />
+      <GasFlowParticles points={toWell} count={80} color="#e5e7eb" speed={baseSpeed} running={running} size={0.05} />
+
+      {/* Manifold junction */}
+      <mesh position={manifold}>
+        <sphereGeometry args={[0.12, 20, 20]} />
+        <meshStandardMaterial color="#cbd5e1" metalness={0.5} roughness={0.35} emissive="#38bdf8" emissiveIntensity={running ? 0.2 : 0.0} />
+      </mesh>
+    </group>
+  );
+};
+
 // Very simple visual interpretation of the Castner cell:
 // - Tall crucible with molten NaOH
 // - Central cathode rod
@@ -415,6 +552,17 @@ const GasCollectors: React.FC = () => (
           clearcoat={0.4}
         />
       </mesh>
+      <Text
+        position={[0, 2.5, 0]}
+        fontSize={0.26}
+        color="#bfdbfe"
+        outlineWidth={0.02}
+        outlineColor="#0f172a"
+        anchorX="center"
+        anchorY="middle"
+      >
+        O2
+      </Text>
     </group>
 
     {/* H2 tank */}
@@ -439,6 +587,61 @@ const GasCollectors: React.FC = () => (
           clearcoat={0.5}
         />
       </mesh>
+      <Text
+        position={[0, 2.35, 0]}
+        fontSize={0.26}
+        color="#bbf7d0"
+        outlineWidth={0.02}
+        outlineColor="#0f172a"
+        anchorX="center"
+        anchorY="middle"
+      >
+        H2
+      </Text>
+    </group>
+
+    {/* Large gas well / storage vessel connected to manifold */}
+    <group position={[3.3, 1.15, 1.1]}>
+      {/* connector pipe from manifold area */}
+      <mesh position={[-1.5, 0.5, 0.3]} rotation={[0, -0.6, 0.15]}>
+        <cylinderGeometry args={[0.1, 0.1, 3.2, 20]} />
+        <meshStandardMaterial color="#9ca3af" metalness={0.4} roughness={0.45} />
+      </mesh>
+
+      {/* gas well body */}
+      <mesh position={[0, 0.9, 0]}>
+        <cylinderGeometry args={[0.9, 0.9, 2.6, 48]} />
+        <meshPhysicalMaterial
+          color="#94a3b8"
+          transparent
+          opacity={0.18}
+          roughness={0.15}
+          clearcoat={0.6}
+          clearcoatRoughness={0.25}
+        />
+      </mesh>
+      <mesh position={[0, 2.25, 0]}>
+        <sphereGeometry args={[0.85, 32, 32]} />
+        <meshPhysicalMaterial
+          color="#94a3b8"
+          transparent
+          opacity={0.18}
+          roughness={0.15}
+          clearcoat={0.6}
+          clearcoatRoughness={0.25}
+        />
+      </mesh>
+      <Text
+        position={[0, 3.1, 0]}
+        fontSize={0.22}
+        color="#e5e7eb"
+        outlineWidth={0.02}
+        outlineColor="#0f172a"
+        anchorX="center"
+        anchorY="middle"
+      >
+        Gas well
+      </Text>
     </group>
   </group>
 );
@@ -535,6 +738,7 @@ export const PlantScene: React.FC<PlantSceneProps> = ({
       <GasHood />
       <Transformer />
       <GasCollectors />
+      <GasPipesAndFlow running={running} currentA={currentA} />
       {/* H2 thermal motion inside H2 tank, positioned to match the green tank group */}
       <group position={[4.0, 0.8, -1.8]}>
         <H2TankMotion h2Kg={h2Kg} />
