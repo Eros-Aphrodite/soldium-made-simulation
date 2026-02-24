@@ -162,12 +162,17 @@ const CastnerCell: React.FC<{
       >
         <cylinderGeometry args={[0.18, 0.18, 3.0, 32]} />
         <meshStandardMaterial
-          color="#9ca3af"
+          color="#1d4ed8"
           metalness={0.8}
           roughness={0.3}
           emissive="#38bdf8"
           emissiveIntensity={0.8 * cathodePulse}
         />
+      </mesh>
+      {/* cathode cap */}
+      <mesh position={[0, 3.6, 0]}>
+        <cylinderGeometry args={[0.26, 0.26, 0.18, 32]} />
+        <meshStandardMaterial color="#60a5fa" metalness={0.9} roughness={0.25} />
       </mesh>
       {/* Cathode reaction halo near base */}
       <mesh position={[0, 0.6, 0]}>
@@ -192,7 +197,7 @@ const CastnerCell: React.FC<{
       >
         <cylinderGeometry args={[0.16, 0.16, 3.0, 32]} />
         <meshStandardMaterial
-          color="#9ca3af"
+          color="#b91c1c"
           metalness={0.8}
           roughness={0.3}
           emissive="#f97316"
@@ -209,12 +214,21 @@ const CastnerCell: React.FC<{
       >
         <cylinderGeometry args={[0.16, 0.16, 3.0, 32]} />
         <meshStandardMaterial
-          color="#9ca3af"
+          color="#b91c1c"
           metalness={0.8}
           roughness={0.3}
           emissive="#f97316"
           emissiveIntensity={0.8 * anodePulse}
         />
+      </mesh>
+      {/* anode caps */}
+      <mesh position={[-0.7, 3.5, 0]}>
+        <cylinderGeometry args={[0.24, 0.24, 0.16, 32]} />
+        <meshStandardMaterial color="#f97316" metalness={0.9} roughness={0.3} />
+      </mesh>
+      <mesh position={[0.7, 3.5, 0]}>
+        <cylinderGeometry args={[0.24, 0.24, 0.16, 32]} />
+        <meshStandardMaterial color="#f97316" metalness={0.9} roughness={0.3} />
       </mesh>
       {/* Anode oxidation halo near bases */}
       <mesh position={[-0.7, 0.6, 0]}>

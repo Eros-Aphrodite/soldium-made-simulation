@@ -253,11 +253,14 @@ function App() {
             {reactionFocus === 'none' && 'Click cell to view reaction'}
           </div>
           <div className={`reaction-viewport focus-${reactionFocus}`}>
+            {/* shared electron track */}
             <div className="electron-track">
               <span className="electron" />
               <span className="electron" />
               <span className="electron" />
             </div>
+
+            {/* simplified ion clouds for anode/electrolyte views */}
             <div className="ion-cloud left">
               <span className="ion positive" />
               <span className="ion positive" />
@@ -268,6 +271,31 @@ function App() {
               <span className="ion negative" />
               <span className="ion negative" />
             </div>
+
+            {/* dedicated sodium reduction micro-scene for cathode */}
+            <div className="na-scene">
+              <div className="na-ion labeled">Na⁺</div>
+              <div className="na-electron e1">e⁻</div>
+              <div className="na-electron e2">e⁻</div>
+              <div className="na-atom labeled">Na</div>
+            </div>
+
+            {/* hydroxide / oxygen micro-scene for anode */}
+            <div className="oh-scene">
+              <div className="oh-ion labeled">OH⁻</div>
+              <div className="oh-ion labeled second">OH⁻</div>
+              <div className="oh-electron">e⁻</div>
+              <div className="oh-product labeled">O₂</div>
+            </div>
+
+            {/* generic electrolyte ion motion micro-scene */}
+            <div className="electrolyte-scene">
+              <div className="el-ion cation">Na⁺</div>
+              <div className="el-ion anion">OH⁻</div>
+              <div className="el-ion cation">Na⁺</div>
+              <div className="el-ion anion">OH⁻</div>
+            </div>
+
             <div className="product-cluster" />
           </div>
         </div>
