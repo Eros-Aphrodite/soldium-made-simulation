@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
+import { OrbitControls, Text } from '@react-three/drei';
 import * as THREE from 'three';
 
 type PlantSceneProps = {
@@ -174,6 +174,18 @@ const CastnerCell: React.FC<{
         <cylinderGeometry args={[0.26, 0.26, 0.18, 32]} />
         <meshStandardMaterial color="#60a5fa" metalness={0.9} roughness={0.25} />
       </mesh>
+      {/* cathode label (-) */}
+      <Text
+        position={[0, 4.1, 0]}
+        fontSize={0.35}
+        color="#e5e7eb"
+        outlineWidth={0.02}
+        outlineColor="#0f172a"
+        anchorX="center"
+        anchorY="middle"
+      >
+        −
+      </Text>
       {/* Cathode reaction halo near base */}
       <mesh position={[0, 0.6, 0]}>
         <cylinderGeometry args={[0.45, 0.45, 0.18, 32]} />
@@ -230,6 +242,29 @@ const CastnerCell: React.FC<{
         <cylinderGeometry args={[0.24, 0.24, 0.16, 32]} />
         <meshStandardMaterial color="#f97316" metalness={0.9} roughness={0.3} />
       </mesh>
+      {/* anode labels (+) */}
+      <Text
+        position={[-0.7, 4.0, 0]}
+        fontSize={0.32}
+        color="#fee2e2"
+        outlineWidth={0.02}
+        outlineColor="#0f172a"
+        anchorX="center"
+        anchorY="middle"
+      >
+        +
+      </Text>
+      <Text
+        position={[0.7, 4.0, 0]}
+        fontSize={0.32}
+        color="#fee2e2"
+        outlineWidth={0.02}
+        outlineColor="#0f172a"
+        anchorX="center"
+        anchorY="middle"
+      >
+        +
+      </Text>
       {/* Anode oxidation halo near bases */}
       <mesh position={[-0.7, 0.6, 0]}>
         <cylinderGeometry args={[0.35, 0.35, 0.16, 32]} />

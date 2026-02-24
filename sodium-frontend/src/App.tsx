@@ -252,7 +252,11 @@ function App() {
             {reactionFocus === 'electrolyte' && 'Electrolyte: ion motion'}
             {reactionFocus === 'none' && 'Click cell to view reaction'}
           </div>
-          <div className={`reaction-viewport focus-${reactionFocus}`}>
+          <div
+            className={`reaction-viewport focus-${reactionFocus} ${
+              isRunning ? 'running' : 'stopped'
+            }`}
+          >
             {/* shared electron track */}
             <div className="electron-track">
               <span className="electron" />
