@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 
 try:  # pragma: no cover - depends on local environment
@@ -43,6 +43,69 @@ class FreeCADBridge:
     def __init__(self, config: Optional[FreeCADConfig] = None) -> None:
         self.config = config or FreeCADConfig()
 
+    def _set_sheet_alias_value(self, sheet: Any, alias: str, value: Any) -> bool:
+        """
+        Set a spreadsheet cell by alias.
+
+        FreeCAD's spreadsheet API varies by version; we try the common methods:
+        - getCellFromAlias(alias) -> address like "B4"
+        - set(address, value)
+        """
+        try:
+            addr = sheet.getCellFromAlias(alias)
+        except Exception:
+            return False
+
+        if not addr:
+            return False
+
+        try:
+            sheet.set(addr, str(value))
+            return True
+        except Exception:
+            return False
+
+    def update_from_simulation(self, values: dict[str, Any]) -> None:
+        """
+        Open the model (or plant layout) and push simulation values into Params.
+
+        Expected aliases (create them in FreeCAD spreadsheet named 'Params'):
+        - Na_cum_kg, NaOH_cum_kg, Cl2_cum_kg, H2_cum_kg
+        - I_a, V_v, P_kw
+        """
+        if FreeCAD is None:
+            return
+
+        if not self.config.model_path.exists():
+            return
+
+        try:  # pragma: no cover
+            doc = FreeCAD.open(str(self.config.model_path))  # type: ignore[call-arg]
+            sheet = doc.getObject("Params")
+            if sheet is None:
+                return
+
+            changed = False
+            alias_map = {
+                "Na_cum_kg": values.get("cumulative_na_kg"),
+                "NaOH_cum_kg": values.get("cumulative_naoh_kg"),
+                "Cl2_cum_kg": values.get("cumulative_cl2_kg"),
+                "H2_cum_kg": values.get("cumulative_h2_kg"),
+                "I_a": values.get("actual_current_a"),
+                "V_v": values.get("cell_voltage_v"),
+                "P_kw": values.get("dc_power_kw"),
+            }
+
+            for alias, v in alias_map.items():
+                if v is None:
+                    continue
+                changed = self._set_sheet_alias_value(sheet, alias, v) or changed
+
+            if changed:
+                doc.recompute()
+        except Exception:
+            return
+
     # ------------------------------------------------------------------ #
     # Public API
     # ------------------------------------------------------------------ #
@@ -71,6 +134,15 @@ class FreeCADBridge:
             if self.config.model_path.exists():
                 doc = FreeCAD.open(str(self.config.model_path))  # type: ignore[call-arg]
                 print(f"FreeCADBridge: opened existing model {self.config.model_path}")
+                # Backwards-compatible behaviour: if the user only set up
+                # Na_cum_kg, we still update it.
+                try:
+                    sheet = doc.getObject("Params")
+                    if sheet is not None:
+                        if self._set_sheet_alias_value(sheet, "Na_cum_kg", sodium_mass_kg):
+                            doc.recompute()
+                except Exception:
+                    pass
             else:
                 # Fallback: create a simple parametric box if no detailed model exists yet.
                 print(

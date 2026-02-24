@@ -197,7 +197,20 @@ class SodiumPlant:
         self.state.cumulative_cost += cost
 
         # 7) Update FreeCAD for visualization (if available)
-        self.freecad.build_simple_cell(sodium_mass_kg=self.state.cumulative_na_produced_kg)
+        # Push a richer set of values into the FreeCAD Params spreadsheet if present.
+        # This allows the 3D model to reflect process outputs (Na/NaOH/Cl2/H2) and
+        # operating point (current/voltage/power).
+        self.freecad.update_from_simulation(
+            {
+                "cumulative_na_kg": self.state.cumulative_na_produced_kg,
+                "cumulative_naoh_kg": self.state.cumulative_naoh_kg,
+                "cumulative_cl2_kg": self.state.cumulative_cl2_kg,
+                "cumulative_h2_kg": self.state.cumulative_h2_kg,
+                "actual_current_a": elec_state.actual_current_a,
+                "cell_voltage_v": elec_state.cell_voltage_v,
+                "dc_power_kw": elec_state.dc_power_kw,
+            }
+        )
 
         return {
             "time_hours": self.state.time_hours,
