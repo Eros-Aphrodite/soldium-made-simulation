@@ -37,6 +37,37 @@ def calculate_finances(
     return total_revenue, total_cost, margin
 
 
+def time_hours_for_naoh_mass(
+    current_a: float,
+    naoh_mass_kg: float,
+    efficiency: float = 0.90,
+) -> float:
+    """
+    Approximate electrolysis time (hours) required to consume a given NaOH mass
+    at a specified current, using Faraday's law for the Castner process.
+
+    For the overall reaction NaOH -> Na + 1/2 O2 + 1/2 H2O we treat
+    1 mol NaOH as delivering 1 mol Na (n = 1).
+    """
+    if current_a <= 0 or naoh_mass_kg <= 0:
+        return 0.0
+
+    FARADAY_CONSTANT = 96485.0  # C/mol
+    MOLAR_MASS_NAOH = 40.0      # g/mol
+
+    total_grams = naoh_mass_kg * 1000.0
+    moles_naoh = total_grams / MOLAR_MASS_NAOH
+
+    # Effective moles actually converted, accounting for efficiency
+    effective_moles = moles_naoh * efficiency
+
+    # Charge required Q = n * F * moles, here n = 1
+    required_coulombs = effective_moles * FARADAY_CONSTANT
+
+    seconds = required_coulombs / current_a
+    return seconds / 3600.0
+
+
 def example_daily_run() -> None:
     """Small self-test / example for a single industrial cell."""
     amps = 10000.0  # 10 kA industrial cell

@@ -4,7 +4,7 @@
     <BuildVersion>9.0.5.0</BuildVersion>
     <BuildDate>2000-01-06T00:00:00</BuildDate>
     <OSInfo>Microsoft Windows 10 Pro, Version 10.0.19045.0, Win32NT Platform</OSInfo>
-    <SavedOn>2026-02-24T22:05:52.3242248+09:00</SavedOn>
+    <SavedOn>2026-02-24T09:33:51.8008848+09:00</SavedOn>
     <SavedFromClassicUI>true</SavedFromClassicUI>
   </GeneralInfo>
   <SimulationObjects>
@@ -40,7 +40,7 @@
       <PreferredFlashAlgorithmTag></PreferredFlashAlgorithmTag>
       <Calculated>true</Calculated>
       <DebugMode>false</DebugMode>
-      <LastUpdated>02/24/2026 17:54:22</LastUpdated>
+      <LastUpdated>02/24/2026 09:31:34</LastUpdated>
       <ErrorMessage></ErrorMessage>
       <Annotation>{\rtf1\ansi\ansicpg1252\deff0\deflang1033{\fonttbl{\f0\fnil\fcharset0 Segoe UI;}}
 \viewkind4\uc1\pard\f0\fs17\par
@@ -222,7 +222,7 @@
       <PreferredFlashAlgorithmTag></PreferredFlashAlgorithmTag>
       <Calculated>true</Calculated>
       <DebugMode>false</DebugMode>
-      <LastUpdated>02/24/2026 17:54:22</LastUpdated>
+      <LastUpdated>02/24/2026 09:31:34</LastUpdated>
       <ErrorMessage></ErrorMessage>
       <Annotation></Annotation>
       <IsAdjustAttached>false</IsAdjustAttached>
@@ -1880,7 +1880,7 @@
       <PreferredFlashAlgorithmTag></PreferredFlashAlgorithmTag>
       <Calculated>true</Calculated>
       <DebugMode>false</DebugMode>
-      <LastUpdated>02/24/2026 17:54:22</LastUpdated>
+      <LastUpdated>02/24/2026 09:31:34</LastUpdated>
       <ErrorMessage></ErrorMessage>
       <Annotation></Annotation>
       <IsAdjustAttached>false</IsAdjustAttached>
@@ -3507,7 +3507,7 @@
       <PreferredFlashAlgorithmTag></PreferredFlashAlgorithmTag>
       <Calculated>true</Calculated>
       <DebugMode>false</DebugMode>
-      <LastUpdated>02/24/2026 17:54:22</LastUpdated>
+      <LastUpdated>02/24/2026 09:31:34</LastUpdated>
       <ErrorMessage></ErrorMessage>
       <Annotation></Annotation>
       <IsAdjustAttached>false</IsAdjustAttached>
@@ -5154,7 +5154,7 @@
       <PreferredFlashAlgorithmTag></PreferredFlashAlgorithmTag>
       <Calculated>true</Calculated>
       <DebugMode>false</DebugMode>
-      <LastUpdated>02/24/2026 17:54:22</LastUpdated>
+      <LastUpdated>02/24/2026 09:31:34</LastUpdated>
       <ErrorMessage></ErrorMessage>
       <Annotation></Annotation>
       <IsAdjustAttached>false</IsAdjustAttached>
@@ -5183,7 +5183,7 @@
   <Settings>
     <Type>DWSIM.SharedClasses.DWSIM.Flowsheet.FlowsheetVariables</Type>
     <SimulationMode></SimulationMode>
-    <BackupFileName>process_backup_20260224_220302.dwbcs</BackupFileName>
+    <BackupFileName>_backup_20260224_093302.dwbcs</BackupFileName>
     <FilePath>F:\sodium\process.dwxml</FilePath>
     <FlowsheetQuickConnect>false</FlowsheetQuickConnect>
     <FlowsheetShowCalculationQueue>false</FlowsheetShowCalculationQueue>
@@ -5194,7 +5194,7 @@
     <FlowsheetSnapToGrid>false</FlowsheetSnapToGrid>
     <FlowsheetDisplayGrid>false</FlowsheetDisplayGrid>
     <FractionNumberFormat>G8</FractionNumberFormat>
-    <Key>99D5F3C52D42A316BF7095AE7308CC818E4784C0</Key>
+    <Key>E83F3ECF687B955F3D230B74B065E93F88E9ADEF</Key>
     <NumberFormat>G6</NumberFormat>
     <Password></Password>
     <SimulationAuthor>DESKTOP-A776S9U\jupiter</SimulationAuthor>
@@ -5780,8 +5780,8 @@
       <Name>RC-429889c2-4600-4cc7-8369-6edae36302ef</Name>
       <Tag>Electrolyzer</Tag>
       <Width>50</Width>
-      <X>482.9175</X>
-      <Y>293.6707</Y>
+      <X>353.3038</X>
+      <Y>166.2516</Y>
       <Selected>false</Selected>
       <ClipboardData></ClipboardData>
       <Rotation>0</Rotation>
@@ -5832,8 +5832,8 @@
       <Name>MAT-5c24296f-872a-481f-8f62-e3f0d1201d04</Name>
       <Tag>1</Tag>
       <Width>20</Width>
-      <X>285.4121</X>
-      <Y>385.5078</Y>
+      <X>153.3986</X>
+      <Y>257.2887</Y>
       <Selected>false</Selected>
       <ClipboardData></ClipboardData>
       <Rotation>0</Rotation>
@@ -5881,8 +5881,8 @@
       <Name>MAT-b8f508b5-4845-406f-943d-25159036ba87</Name>
       <Tag>2</Tag>
       <Width>20</Width>
-      <X>674.0903</X>
-      <Y>216.3308</Y>
+      <X>542.0767</X>
+      <Y>88.11166</Y>
       <Selected>false</Selected>
       <ClipboardData></ClipboardData>
       <Rotation>0</Rotation>
@@ -5930,8 +5930,8 @@
       <Name>MAT-3294b093-af69-4ed3-a565-6e61add5e35d</Name>
       <Tag>3</Tag>
       <Width>20</Width>
-      <X>721.2375</X>
-      <Y>390.4116</Y>
+      <X>589.2239</X>
+      <Y>262.1925</Y>
       <Selected>false</Selected>
       <ClipboardData></ClipboardData>
       <Rotation>0</Rotation>
@@ -5979,8 +5979,8 @@
       <Name>EN-844153e4-d717-4e91-b575-9dbe01b510d7</Name>
       <Tag>E1</Tag>
       <Width>20</Width>
-      <X>593.6665</X>
-      <Y>488.2581</Y>
+      <X>461.6529</X>
+      <Y>360.039</Y>
       <Selected>false</Selected>
       <ClipboardData></ClipboardData>
       <Rotation>0</Rotation>
@@ -8795,10 +8795,6 @@ Parameter name: index</Message>
     <Message>[2/24/2026 9:24:35 AM] Error in 'Electrolyzer': There is no material stream connected to the outlet port of the reactor. (Conversion.vb, 73)</Message>
     <Message>[2/24/2026 9:31:23 AM] The flowsheet was calculated successfully. [0.02294s]</Message>
     <Message>[2/24/2026 9:31:34 AM] The flowsheet was calculated successfully. [0.004356s]</Message>
-    <Message>[2/24/2026 9:33:51 AM] File F:\sodium\process.dwxml saved successfully.</Message>
-    <Message>[2/24/2026 5:54:15 PM] The flowsheet was calculated successfully. [0.006863s]</Message>
-    <Message>[2/24/2026 5:54:19 PM] The flowsheet was calculated successfully. [0.003905s]</Message>
-    <Message>[2/24/2026 5:54:22 PM] The flowsheet was calculated successfully. [0.002928s]</Message>
   </MessagesLog>
   <Results>
     <Type>DWSIM.SharedClasses.DWSIM.Flowsheet.FlowsheetResults</Type>

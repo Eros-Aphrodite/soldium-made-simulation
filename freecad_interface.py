@@ -43,38 +43,6 @@ class FreeCADBridge:
     def __init__(self, config: Optional[FreeCADConfig] = None) -> None:
         self.config = config or FreeCADConfig()
 
-    def _find_params_sheet(self, doc: Any) -> Any | None:
-        """Return the spreadsheet object whose *label* is 'Params'."""
-        try:
-            for obj in getattr(doc, "Objects", []):
-                if getattr(obj, "Label", "") == "Params":
-                    return obj
-        except Exception:
-            return None
-        return None
-
-    def _set_sheet_alias_value(self, sheet: Any, alias: str, value: Any) -> bool:
-        """
-        Set a spreadsheet cell by alias.
-
-        FreeCAD's spreadsheet API varies by version; we try the common methods:
-        - getCellFromAlias(alias) -> address like "B4"
-        - set(address, value)
-        """
-        try:
-            addr = sheet.getCellFromAlias(alias)
-        except Exception:
-            return False
-
-        if not addr:
-            return False
-
-        try:
-            sheet.set(addr, str(value))
-            return True
-        except Exception:
-            return False
-
     def update_from_simulation(self, values: dict[str, Any]) -> None:
         """
         Open the model (or plant layout) and push simulation values into Params.
@@ -94,35 +62,34 @@ class FreeCADBridge:
             if doc is None:
                 return
 
-            sheet = self._find_params_sheet(doc)
+            # In your current model the spreadsheet object is labelled "Params"
+            # and the numeric cells we care about are fixed in column B:
+            # B4..B10. We write directly to those cells for robustness.
+            sheet = None
+            for obj in getattr(doc, "Objects", []):
+                if getattr(obj, "Label", "") == "Params":
+                    sheet = obj
+                    break
             if sheet is None:
                 return
 
             changed = False
-            alias_map = {
-                "Na_cum_kg": values.get("cumulative_na_kg"),
-                "NaOH_cum_kg": values.get("cumulative_naoh_kg"),
-                "Cl2_cum_kg": values.get("cumulative_cl2_kg"),
-                "H2_cum_kg": values.get("cumulative_h2_kg"),
-                "I_a": values.get("actual_current_a"),
-                "V_v": values.get("cell_voltage_v"),
-                "P_kw": values.get("dc_power_kw"),
-            }
-
-            for alias, v in alias_map.items():
-                if v is None:
-                    continue
-                if self._set_sheet_alias_value(sheet, alias, v):
-                    changed = True
-
-            # Fallback for your current layout: if aliases fail for Na_cum_kg,
-            # also try writing directly to B4 so you can see the value move.
-            if not changed and values.get("cumulative_na_kg") is not None:
-                try:
-                    sheet.set("B4", str(values["cumulative_na_kg"]))
-                    changed = True
-                except Exception:
-                    pass
+            mapping = [
+                ("B4", "cumulative_na_kg"),
+                ("B5", "cumulative_naoh_kg"),
+                ("B6", "cumulative_cl2_kg"),
+                ("B7", "cumulative_h2_kg"),
+                ("B8", "actual_current_a"),
+                ("B9", "cell_voltage_v"),
+                ("B10", "dc_power_kw"),
+            ]
+            for cell, key in mapping:
+                if key in values and values[key] is not None:
+                    try:
+                        sheet.set(cell, str(values[key]))
+                        changed = True
+                    except Exception:
+                        pass
 
             if changed:
                 doc.recompute()
@@ -160,13 +127,13 @@ class FreeCADBridge:
 
             if doc is not None:
                 print(f"FreeCADBridge: opened existing model {self.config.model_path}")
-                # Backwards-compatible behaviour: if the user only set up
-                # Na_cum_kg, we still update it.
+                # Keep backwards-compatible single-cell update for Na_cum_kg.
                 try:
-                    sheet = self._find_params_sheet(doc)
-                    if sheet is not None:
-                        if self._set_sheet_alias_value(sheet, "Na_cum_kg", sodium_mass_kg):
+                    for obj in getattr(doc, "Objects", []):
+                        if getattr(obj, "Label", "") == "Params":
+                            obj.set("B4", str(sodium_mass_kg))
                             doc.recompute()
+                            break
                 except Exception:
                     pass
             else:
