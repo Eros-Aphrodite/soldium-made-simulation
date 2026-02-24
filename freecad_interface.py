@@ -43,6 +43,16 @@ class FreeCADBridge:
     def __init__(self, config: Optional[FreeCADConfig] = None) -> None:
         self.config = config or FreeCADConfig()
 
+    def _find_params_sheet(self, doc: Any) -> Any | None:
+        """Return the spreadsheet object whose *label* is 'Params'."""
+        try:
+            for obj in getattr(doc, "Objects", []):
+                if getattr(obj, "Label", "") == "Params":
+                    return obj
+        except Exception:
+            return None
+        return None
+
     def _set_sheet_alias_value(self, sheet: Any, alias: str, value: Any) -> bool:
         """
         Set a spreadsheet cell by alias.
@@ -76,12 +86,15 @@ class FreeCADBridge:
         if FreeCAD is None:
             return
 
-        if not self.config.model_path.exists():
-            return
-
         try:  # pragma: no cover
-            doc = FreeCAD.open(str(self.config.model_path))  # type: ignore[call-arg]
-            sheet = doc.getObject("Params")
+            # Prefer the current active document when running inside FreeCAD.
+            doc = getattr(FreeCAD, "ActiveDocument", None)
+            if doc is None and self.config.model_path.exists():
+                doc = FreeCAD.open(str(self.config.model_path))  # type: ignore[call-arg]
+            if doc is None:
+                return
+
+            sheet = self._find_params_sheet(doc)
             if sheet is None:
                 return
 
@@ -141,13 +154,16 @@ class FreeCADBridge:
 
         # Preferred path: open the detailed electrolyzer model the user created.
         try:  # type: ignore[pragma]
-            if self.config.model_path.exists():
+            doc = getattr(FreeCAD, "ActiveDocument", None)
+            if doc is None and self.config.model_path.exists():
                 doc = FreeCAD.open(str(self.config.model_path))  # type: ignore[call-arg]
+
+            if doc is not None:
                 print(f"FreeCADBridge: opened existing model {self.config.model_path}")
                 # Backwards-compatible behaviour: if the user only set up
                 # Na_cum_kg, we still update it.
                 try:
-                    sheet = doc.getObject("Params")
+                    sheet = self._find_params_sheet(doc)
                     if sheet is not None:
                         if self._set_sheet_alias_value(sheet, "Na_cum_kg", sodium_mass_kg):
                             doc.recompute()
