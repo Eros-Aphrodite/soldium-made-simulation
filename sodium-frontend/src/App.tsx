@@ -27,6 +27,9 @@ function App() {
   const [reactionFocus, setReactionFocus] = useState<'none' | 'cathode' | 'anode' | 'electrolyte'>(
     'none',
   );
+  const [activeModel, setActiveModel] = useState<
+    'plant' | 'hv-room' | 'ammeter' | 'voltmeter' | 'multimeter'
+  >('plant');
 
   async function fetchState() {
     try {
@@ -236,11 +239,44 @@ function App() {
       </div>
 
       <div className="canvas-container">
+        <div className="model-toggle">
+          <button
+            className={activeModel === 'plant' ? 'active' : ''}
+            onClick={() => setActiveModel('plant')}
+          >
+            Plant system
+          </button>
+          <button
+            className={activeModel === 'hv-room' ? 'active' : ''}
+            onClick={() => setActiveModel('hv-room')}
+          >
+            HV room
+          </button>
+          <button
+            className={activeModel === 'ammeter' ? 'active' : ''}
+            onClick={() => setActiveModel('ammeter')}
+          >
+            Ammeter
+          </button>
+          <button
+            className={activeModel === 'voltmeter' ? 'active' : ''}
+            onClick={() => setActiveModel('voltmeter')}
+          >
+            Voltmeter
+          </button>
+          <button
+            className={activeModel === 'multimeter' ? 'active' : ''}
+            onClick={() => setActiveModel('multimeter')}
+          >
+            Digital multimeter
+          </button>
+        </div>
         <PlantScene
           productionKg={productionKg}
           currentA={currentAForViz}
           running={isRunning}
           h2Kg={h2Kg}
+          activeModel={activeModel}
           onCathodeClick={() => setReactionFocus('cathode')}
           onAnodeClick={() => setReactionFocus('anode')}
           onElectrolyteClick={() => setReactionFocus('electrolyte')}

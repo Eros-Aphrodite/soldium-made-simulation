@@ -101,7 +101,12 @@ const GlbModelWithFallback: React.FC = () => (
   >
     {/* Wall panel: sit on floor, face the viewer like the reference render */}
     <group>
-      <GlbModel url={keuvModelUrl} position={[4, 0, 0]} rotation={[0, -Math.PI / 2, 0]} />
+      <GlbModel
+        url={keuvModelUrl}
+        position={[7, 0, 0]}
+        rotation={[0, -Math.PI / 2, 0]}
+        scaleMultiplier={0.55}
+      />
       {/* Label above the tower, like the H2/O2 bottles, fully visible */}
       <Billboard position={[4, 4.1, 0.6]}>
         <Text
@@ -124,6 +129,7 @@ type PlantSceneProps = {
   currentA: number;
   running: boolean;
   h2Kg: number;
+  activeModel: 'plant' | 'hv-room' | 'ammeter' | 'voltmeter' | 'multimeter';
   onCathodeClick?: () => void;
   onAnodeClick?: () => void;
   onElectrolyteClick?: () => void;
@@ -841,33 +847,33 @@ const HighVoltageRoom: React.FC = () => (
     {/* Integrated 10 kV high-voltage power distribution room placed away from the main cell */}
     <GlbModel
       url="/models/10kv_high-voltage_power_distribution_room.glb"
-      position={[8, 0, -4]}
+      position={[10, 0, -6]}
       rotation={[0, Math.PI / 2, 0]}
-      scaleMultiplier={2.2}
+      scaleMultiplier={1.4}
     />
   </group>
 );
 
 const InstrumentCluster: React.FC = () => (
   <group>
-    {/* Physical ammeter near the transformer/rectifier feed */}
+    {/* Physical ammeter near the transformer/rectifier feed, placed left of the main cell */}
     <GlbModel
       url="/models/ammeter.glb"
-      position={[-3.2, 0.75, -1.2]}
+      position={[-6.0, 0.75, -1.5]}
       rotation={[0, Math.PI / 5, 0]}
       scaleMultiplier={1.1}
     />
-    {/* Analog voltmeter on the front bench */}
+    {/* Analog voltmeter further left-front */}
     <GlbModel
       url="/models/voltmeter-freepoly.org.glb"
-      position={[-2.7, 0.65, 1.4]}
+      position={[-6.2, 0.65, 0.8]}
       rotation={[0, -Math.PI / 6, 0]}
       scaleMultiplier={1.2}
     />
-    {/* Digital multimeter closer to the cell */}
+    {/* Digital multimeter between plant and meters */}
     <GlbModel
       url="/models/digital_multimeter.glb"
-      position={[-1.9, 0.65, 0.4]}
+      position={[-4.5, 0.65, 0.0]}
       rotation={[0, -Math.PI / 4, 0]}
       scaleMultiplier={1.1}
     />
@@ -925,6 +931,7 @@ export const PlantScene: React.FC<PlantSceneProps> = ({
   currentA,
   running,
   h2Kg,
+  activeModel,
   onCathodeClick,
   onAnodeClick,
   onElectrolyteClick,
@@ -935,19 +942,53 @@ export const PlantScene: React.FC<PlantSceneProps> = ({
       <ambientLight intensity={0.45} />
       <directionalLight position={[5, 10, 6]} intensity={1.3} />
       <Floor />
-      <HighVoltageRoom />
-      <GlbModelWithFallback />
-      <CastnerCell
-        productionKg={productionKg}
-        currentA={currentA}
-        running={running}
-        onCathodeClick={onCathodeClick}
-        onAnodeClick={onAnodeClick}
-        onElectrolyteClick={onElectrolyteClick}
-      />
-      <GasCollectors h2Kg={h2Kg} />
-      <GasPipesAndFlow running={running} currentA={currentA} />
-      <InstrumentCluster />
+      {/* Only one major 3D model group is shown at a time for clear inspection. */}
+      {activeModel === 'plant' && (
+        <>
+          {/* Core sodium production cell at scene origin */}
+          <CastnerCell
+            productionKg={productionKg}
+            currentA={currentA}
+            running={running}
+            onCathodeClick={onCathodeClick}
+            onAnodeClick={onAnodeClick}
+            onElectrolyteClick={onElectrolyteClick}
+          />
+          {/* Gas handling: bottles on top of the cell and external purifier to the right */}
+          <GasCollectors h2Kg={h2Kg} />
+          <GasPipesAndFlow running={running} currentA={currentA} />
+          <GlbModelWithFallback />
+          {/* Electrical supply / instruments to the left */}
+          <InstrumentCluster />
+          {/* High-voltage room shell set far to the back-right */}
+          <HighVoltageRoom />
+        </>
+      )}
+      {activeModel === 'hv-room' && <HighVoltageRoom />}
+      {activeModel === 'ammeter' && (
+        <GlbModel
+          url="/models/ammeter.glb"
+          position={[0, 0, 0]}
+          rotation={[0, Math.PI / 10, 0]}
+          scaleMultiplier={1.3}
+        />
+      )}
+      {activeModel === 'voltmeter' && (
+        <GlbModel
+          url="/models/voltmeter-freepoly.org.glb"
+          position={[0, 0, 0]}
+          rotation={[0, -Math.PI / 12, 0]}
+          scaleMultiplier={1.3}
+        />
+      )}
+      {activeModel === 'multimeter' && (
+        <GlbModel
+          url="/models/digital_multimeter.glb"
+          position={[0, 0, 0]}
+          rotation={[0, -Math.PI / 8, 0]}
+          scaleMultiplier={1.3}
+        />
+      )}
       <OrbitControls enableDamping />
     </Canvas>
   );
