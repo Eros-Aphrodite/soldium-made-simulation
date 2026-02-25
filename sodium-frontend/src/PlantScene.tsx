@@ -101,12 +101,7 @@ const GlbModelWithFallback: React.FC = () => (
   >
     {/* Wall panel: sit on floor, face the viewer like the reference render */}
     <group>
-      <GlbModel
-        url={keuvModelUrl}
-        position={[7, 0, 0]}
-        rotation={[0, -Math.PI / 2, 0]}
-        scaleMultiplier={0.55}
-      />
+      <GlbModel url={keuvModelUrl} position={[4, 0, 0]} rotation={[0, -Math.PI / 2, 0]} />
       {/* Label above the tower, like the H2/O2 bottles, fully visible */}
       <Billboard position={[4, 4.1, 0.6]}>
         <Text
@@ -847,35 +842,28 @@ const HighVoltageRoom: React.FC = () => (
     {/* Integrated 10 kV high-voltage power distribution room placed away from the main cell */}
     <GlbModel
       url="/models/10kv_high-voltage_power_distribution_room.glb"
-      position={[10, 0, -6]}
+      position={[8, 0, -4]}
       rotation={[0, Math.PI / 2, 0]}
-      scaleMultiplier={1.4}
+      scaleMultiplier={2.2}
     />
   </group>
 );
 
 const InstrumentCluster: React.FC = () => (
   <group>
-    {/* Physical ammeter near the transformer/rectifier feed, placed left of the main cell */}
+    {/* Physical ammeter – current switch, left side of cockpit */}
     <GlbModel
       url="/models/ammeter.glb"
-      position={[-6.0, 0.75, -1.5]}
-      rotation={[0, Math.PI / 5, 0]}
-      scaleMultiplier={1.1}
+      position={[-1.8, 0.0, 2.1]}
+      rotation={[0, Math.PI / 10, 0]}
+      scaleMultiplier={0.55}
     />
-    {/* Analog voltmeter further left-front */}
-    <GlbModel
-      url="/models/voltmeter-freepoly.org.glb"
-      position={[-6.2, 0.65, 0.8]}
-      rotation={[0, -Math.PI / 6, 0]}
-      scaleMultiplier={1.2}
-    />
-    {/* Digital multimeter between plant and meters */}
+    {/* Digital multimeter – voltage switch, right side of cockpit, clearly separated */}
     <GlbModel
       url="/models/digital_multimeter.glb"
-      position={[-4.5, 0.65, 0.0]}
-      rotation={[0, -Math.PI / 4, 0]}
-      scaleMultiplier={1.1}
+      position={[1.8, 0.0, 2.5]}
+      rotation={[0, -Math.PI / 6, 0]}
+      scaleMultiplier={0.55}
     />
   </group>
 );
