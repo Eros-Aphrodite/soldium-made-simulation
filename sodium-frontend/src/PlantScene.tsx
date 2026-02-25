@@ -7,25 +7,30 @@ import keuvModelUrl from './assets/KEUV_export_aero.glb?url';
 
 useGLTF.preload(keuvModelUrl);
 
-const TARGET_SIZE = 3;
+const TARGET_SIZE = 5;
 
 const GlbModel: React.FC<{
   url: string;
+  /** World position of the model base (where it meets the floor). */
   position?: [number, number, number];
   rotation?: [number, number, number];
 }> = ({ url, position = [0, 0, 0], rotation = [0, 0, 0] }) => {
   const { scene } = useGLTF(url);
-  const { cloned, scale } = useMemo(() => {
+
+  const { cloned, scale, height } = useMemo(() => {
     const c = scene.clone();
     const box = new THREE.Box3().setFromObject(c);
     const size = new THREE.Vector3();
     box.getSize(size);
+
+    // Center model around origin so X/Z are symmetric; keep Y extent for base alignment.
     const center = new THREE.Vector3();
     box.getCenter(center);
     c.position.sub(center);
+
     const maxDim = Math.max(size.x, size.y, size.z, 1e-6);
     const s = TARGET_SIZE / maxDim;
-    return { cloned: c, scale: s };
+    return { cloned: c, scale: s, height: size.y };
   }, [scene]);
 
   useEffect(() => {
@@ -37,8 +42,12 @@ const GlbModel: React.FC<{
     });
   }, [cloned]);
 
+  // Raise the centered model so its base sits on the global floor (y = 0).
+  const [px, py, pz] = position;
+  const yOffset = (height * scale) / 2;
+
   return (
-    <group position={position} rotation={rotation} scale={[scale, scale, scale]}>
+    <group position={[px, py + yOffset, pz]} rotation={rotation} scale={[scale, scale, scale]}>
       <primitive object={cloned} />
     </group>
   );
@@ -56,7 +65,22 @@ const GlbModelWithFallback: React.FC = () => (
       </mesh>
     }
   >
-    <GlbModel url={keuvModelUrl} position={[4, 0.5, 0]} rotation={[0, 0, 0]} />
+    {/* Wall panel: sit on floor, face the viewer like the reference render */}
+    <group>
+      <GlbModel url={keuvModelUrl} position={[4, 0, 0]} rotation={[0, -Math.PI / 2, 0]} />
+      <Billboard position={[4, 3.2, 0.3]}>
+        <Text
+          fontSize={0.45}
+          color="#111827"
+          outlineWidth={0.03}
+          outlineColor="#e5e7eb"
+          anchorX="center"
+          anchorY="middle"
+        >
+          Gas Purifier
+        </Text>
+      </Billboard>
+    </group>
   </Suspense>
 );
 
@@ -172,20 +196,20 @@ const GasPipesAndFlow: React.FC<{ running: boolean; currentA: number }> = ({ run
   const currentScaled = Math.min(Math.abs(currentA) / 10_000, 2.0);
   const baseSpeed = 0.22 + currentScaled * 0.18;
 
-  // Rebuilt paths to match drawing: short vertical risers from lid -> bottles on top plate,
-  // plus a clean header to the gas well on the right.
+  // Short vertical risers from lid -> bottles on top plate,
+  // plus a clean header to the external Gas Purifier tower on the right.
   const lidO2Out: [number, number, number] = [0.55, 2.95, 0.65];
   const lidH2Out: [number, number, number] = [-0.55, 2.95, 0.65];
   const o2BottleIn: [number, number, number] = [0.85, 3.35, 0.95];
   const h2BottleIn: [number, number, number] = [-0.85, 3.35, 0.95];
 
   const header: [number, number, number] = [1.55, 2.85, 0.2];
-  // Entry point into the side wall of the gas well
-  const wellIn: [number, number, number] = [4.2, 2.15, 0.2];
+  // Entry point into the side wall of the Gas Purifier tower (front face)
+  const purifierIn: [number, number, number] = [4.0, 2.0, 0.3];
 
   const toO2: [number, number, number][] = [lidO2Out, [0.7, 3.1, 0.9], o2BottleIn];
   const toH2: [number, number, number][] = [lidH2Out, [-0.7, 3.1, 0.9], h2BottleIn];
-  const toWell: [number, number, number][] = [header, [2.7, 2.8, 0.25], wellIn];
+  const toPurifier: [number, number, number][] = [header, [2.7, 2.8, 0.25], purifierIn];
 
   return (
     <group>
@@ -207,7 +231,7 @@ const GasPipesAndFlow: React.FC<{ running: boolean; currentA: number }> = ({ run
         opacity={0.92}
       />
       <TubePipe
-        points={toWell}
+        points={toPurifier}
         radius={0.06}
         color="#cbd5e1"
         emissive="#e5e7eb"
@@ -218,7 +242,7 @@ const GasPipesAndFlow: React.FC<{ running: boolean; currentA: number }> = ({ run
       {/* Flow particles (clearly show gas moving) */}
       <GasFlowParticles points={toO2} count={55} color="#bfdbfe" speed={baseSpeed * 1.35} running={running} size={0.06} />
       <GasFlowParticles points={toH2} count={55} color="#bbf7d0" speed={baseSpeed * 1.35} running={running} size={0.06} />
-      <GasFlowParticles points={toWell} count={70} color="#e5e7eb" speed={baseSpeed * 1.05} running={running} size={0.05} />
+      <GasFlowParticles points={toPurifier} count={70} color="#e5e7eb" speed={baseSpeed * 1.05} running={running} size={0.05} />
 
       {/* Lid ports + header junction */}
       <mesh position={lidO2Out}>
@@ -317,6 +341,11 @@ const CastnerCell: React.FC<{
   const currentScaled = Math.min(Math.abs(currentA) / 10_000, 2.0);
   const activity = running ? Math.min(currentScaled, 1.0) : 0; // 0–1 activity metric
 
+  // Approximate depletion of the NaOH bath from produced sodium.
+  const MAX_BATCH_NA_KG = 10;
+  const depletion = Math.min(productionKg / MAX_BATCH_NA_KG, 1.0);
+  const electrolyteFill = 1 - depletion * 0.75; // never fully empty visually
+
   const [cathodePulse, setCathodePulse] = useState(0);
   const [anodePulse, setAnodePulse] = useState(0);
   const [electrolytePulse, setElectrolytePulse] = useState(0);
@@ -395,9 +424,10 @@ const CastnerCell: React.FC<{
         />
       </mesh>
 
-      {/* Molten NaOH pool (bright, semi‑transparent) */}
+      {/* Molten NaOH pool (bright, semi‑transparent, gradually depleting) */}
       <mesh
         position={[0, 0.95, 0]}
+        scale={[1, electrolyteFill, 1]}
         onPointerDown={(e) => {
           e.stopPropagation();
           setElectrolytePulse(1);
@@ -685,7 +715,7 @@ const WiringAndMeter: React.FC = () => (
 );
 
 const GasCollectors: React.FC<{ h2Kg: number }> = ({ h2Kg }) => (
-  // Place bottles on the top plate, like the drawing
+  // O2 / H2 capture bottles on the top plate
   <group position={[0, 0, 0]}>
     {/* O2 bottle */}
     <group position={[0.85, 3.35, 0.95]}>
@@ -755,59 +785,13 @@ const GasCollectors: React.FC<{ h2Kg: number }> = ({ h2Kg }) => (
         <H2TankMotion h2Kg={h2Kg} />
       </group>
     </group>
-
-    {/* Large gas well / storage vessel connected to manifold */}
-    <group position={[5.3, 1.6, 0.2]}>
-      {/* gas well body (smaller + closer) */}
-      <mesh position={[0, 1.1, 0]}>
-        <cylinderGeometry args={[1.1, 1.1, 3.0, 48]} />
-        <meshPhysicalMaterial
-          color="#94a3b8"
-          transparent
-          opacity={0.16}
-          roughness={0.15}
-          clearcoat={0.6}
-          clearcoatRoughness={0.25}
-        />
-      </mesh>
-      <mesh position={[0, 2.6, 0]}>
-        <sphereGeometry args={[1.05, 32, 32]} />
-        <meshPhysicalMaterial
-          color="#94a3b8"
-          transparent
-          opacity={0.16}
-          roughness={0.15}
-          clearcoat={0.6}
-          clearcoatRoughness={0.25}
-        />
-      </mesh>
-      <Billboard position={[0, 3.85, 0]}>
-        <Text fontSize={0.22} color="#e5e7eb" outlineWidth={0.02} outlineColor="#0f172a">
-          Gas well
-        </Text>
-      </Billboard>
-    </group>
-  </group>
-);
-
-const GasHood: React.FC = () => (
-  <group position={[0, 2.7, 0]}>
-    <mesh>
-      <boxGeometry args={[2.4, 0.25, 2.4]} />
-      <meshStandardMaterial color="#374151" />
-    </mesh>
-    {/* exhaust stack */}
-    <mesh position={[0.9, 0.9, 0]}>
-      <cylinderGeometry args={[0.35, 0.35, 1.5, 32]} />
-      <meshStandardMaterial color="#f97316" />
-    </mesh>
   </group>
 );
 
 const Floor: React.FC = () => (
   <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
     <planeGeometry args={[18, 18]} />
-    <meshStandardMaterial color="#020617" />
+    <meshStandardMaterial color="#9ca3af" roughness={0.7} metalness={0.0} />
   </mesh>
 );
 
@@ -881,10 +865,8 @@ export const PlantScene: React.FC<PlantSceneProps> = ({
         onAnodeClick={onAnodeClick}
         onElectrolyteClick={onElectrolyteClick}
       />
-      <GasHood />
-      <Transformer />
       <GasCollectors h2Kg={h2Kg} />
-      <GasPipesAndFlow running={running} currentA={currentA} />
+      <Transformer />
       <WiringAndMeter />
       <OrbitControls enableDamping />
     </Canvas>
