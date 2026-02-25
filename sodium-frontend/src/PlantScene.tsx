@@ -203,7 +203,18 @@ const GasPipesAndFlow: React.FC<{ running: boolean; currentA: number }> = ({ run
   const o2BottleIn: [number, number, number] = [0.85, 3.35, 0.95];
   const h2BottleIn: [number, number, number] = [-0.85, 3.35, 0.95];
 
+  // Header where gases are collected before purification.
   const header: [number, number, number] = [1.55, 2.85, 0.2];
+
+  // Connection from header over to the external Gas Purifier tower
+  // mounted at approximately x ≈ 4 in world space.
+  const purifierInlet: [number, number, number] = [3.4, 2.7, 0.2];
+  const toPurifier: [number, number, number][] = [
+    header,
+    [2.4, 2.9, 0.2],
+    [3.0, 2.9, 0.2],
+    purifierInlet,
+  ];
 
   const toO2: [number, number, number][] = [lidO2Out, [0.7, 3.1, 0.9], o2BottleIn];
   const toH2: [number, number, number][] = [lidH2Out, [-0.7, 3.1, 0.9], h2BottleIn];
@@ -228,10 +239,41 @@ const GasPipesAndFlow: React.FC<{ running: boolean; currentA: number }> = ({ run
         opacity={0.92}
       />
 
-      {/* Flow particles (clearly show gas moving) */}
-      <GasFlowParticles points={toO2} count={55} color="#bfdbfe" speed={baseSpeed * 1.35} running={running} size={0.06} />
-      <GasFlowParticles points={toH2} count={55} color="#bbf7d0" speed={baseSpeed * 1.35} running={running} size={0.06} />
-      {/* No visual connection to the external Gas Purifier tower */}
+      {/* Header -> Gas Purifier tower transfer line */}
+      <TubePipe
+        points={toPurifier}
+        radius={0.06}
+        color="#e5e7eb"
+        emissive="#e5e7eb"
+        emissiveIntensity={running ? 0.25 : 0.0}
+        opacity={0.96}
+      />
+
+      {/* Flow particles (clearly show gas moving within the plant and into purifier) */}
+      <GasFlowParticles
+        points={toO2}
+        count={55}
+        color="#bfdbfe"
+        speed={baseSpeed * 1.35}
+        running={running}
+        size={0.06}
+      />
+      <GasFlowParticles
+        points={toH2}
+        count={55}
+        color="#bbf7d0"
+        speed={baseSpeed * 1.35}
+        running={running}
+        size={0.06}
+      />
+      <GasFlowParticles
+        points={toPurifier}
+        count={70}
+        color="#fde68a"
+        speed={baseSpeed * 1.5}
+        running={running}
+        size={0.05}
+      />
 
       {/* Lid ports + header junction */}
       <mesh position={lidO2Out}>
@@ -831,6 +873,7 @@ export const PlantScene: React.FC<PlantSceneProps> = ({
         onElectrolyteClick={onElectrolyteClick}
       />
       <GasCollectors h2Kg={h2Kg} />
+      <GasPipesAndFlow running={running} currentA={currentA} />
       <Transformer />
       <WiringAndMeter />
       <OrbitControls enableDamping />
