@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import './App.css';
 import { PlantScene } from './PlantScene';
+import { useElectrolysisSimulation } from './useElectrolysisSimulation';
 
 type SimulationState = {
   time_hours: number;
@@ -16,9 +17,50 @@ type SimulationState = {
 
 const API_BASE = 'http://127.0.0.1:8000';
 
+type MiniGraphProps = {
+  title: string;
+  series: { t: number; y: number }[];
+  yLabel: string;
+};
+
+function MiniGraph({ title, series, yLabel }: MiniGraphProps) {
+  if (!series.length) return null;
+
+  const t0 = series[0].t;
+  const tLast = series[series.length - 1].t || t0 + 1;
+  const xs = series.map((p) => p.t);
+  const ys = series.map((p) => p.y);
+  const minY = Math.min(...ys, 0);
+  const maxY = Math.max(...ys, 1e-6);
+
+  const width = 220;
+  const height = 80;
+
+  const path = series
+    .map((p, i) => {
+      const x = ((p.t - t0) / (tLast - t0 || 1)) * (width - 10) + 5;
+      const normY = (p.y - minY) / (maxY - minY || 1);
+      const y = height - 5 - normY * (height - 10);
+      return `${i === 0 ? 'M' : 'L'}${x},${y}`;
+    })
+    .join(' ');
+
+  return (
+    <div className="mini-graph">
+      <div className="mini-graph-header">
+        <span>{title}</span>
+        <span className="mini-graph-ylabel">{yLabel}</span>
+      </div>
+      <svg width={width} height={height}>
+        <path d={path} stroke="#22c55e" strokeWidth={2} fill="none" />
+      </svg>
+    </div>
+  );
+}
+
 function App() {
   const [sim, setSim] = useState<SimulationState | null>(null);
-  const [currentAInput, setCurrentAInput] = useState('10000');
+  const [currentAInput, setCurrentAInput] = useState('4.0'); // now used as voltage input (V)
   const [dtInput, setDtInput] = useState('1');
   const [naohMassInput, setNaohMassInput] = useState('10'); // kg
   const [estimatedHours, setEstimatedHours] = useState<string | null>(null);
@@ -128,11 +170,21 @@ function App() {
     };
   }, [isRunning]);
 
-  const productionKg = sim?.cumulative_na_kg ?? 0;
-  const currentAForViz =
-    sim?.current_a ??
-    (Number.isFinite(parseFloat(currentAInput)) ? parseFloat(currentAInput) : 0);
-  const h2Kg = sim?.cumulative_h2_kg ?? 0;
+  const voltageV = useMemo(
+    () => (Number.isFinite(parseFloat(currentAInput)) ? parseFloat(currentAInput) : 0),
+    [currentAInput],
+  );
+
+  const localSim = useElectrolysisSimulation({
+    voltageV,
+    naohInitialKg: parseFloat(naohMassInput) || 0,
+    running: isRunning,
+    dtSeconds: 0.25,
+  });
+
+  const productionKg = localSim.naProducedKg;
+  const currentAForViz = localSim.currentA;
+  const h2Kg = localSim.h2Kg;
 
   return (
     <div className="app-root">
@@ -141,7 +193,7 @@ function App() {
 
         <div className="controls">
           <label>
-            <span>Current (A)</span>
+            <span>Voltage (V)</span>
             <input
               type="number"
               value={currentAInput}
@@ -183,51 +235,70 @@ function App() {
 
         <div className="stats">
           <h2>State</h2>
-          {sim ? (
-            <ul>
-              <li>
-                <span>Time (h)</span>
-                <strong>{sim.time_hours.toFixed(2)}</strong>
-              </li>
-              <li>
-                <span>Na produced (kg)</span>
-                <strong>{sim.cumulative_na_kg.toFixed(3)}</strong>
-              </li>
-              <li>
-                <span>NaOH (kg)</span>
-                <strong>{sim.cumulative_naoh_kg.toFixed(3)}</strong>
-              </li>
-              <li>
-                <span>Cl₂ (kg)</span>
-                <strong>{sim.cumulative_cl2_kg.toFixed(3)}</strong>
-              </li>
-              <li>
-                <span>H₂ (kg)</span>
-                <strong>{sim.cumulative_h2_kg.toFixed(3)}</strong>
-              </li>
-              <li>
-                <span>Revenue</span>
-                <strong>{sim.cumulative_revenue.toFixed(2)}</strong>
-              </li>
-              <li>
-                <span>Cost</span>
-                <strong>{sim.cumulative_cost.toFixed(2)}</strong>
-              </li>
-              <li>
-                <span>Current (A)</span>
-                <strong>{sim.current_a.toFixed(0)}</strong>
-              </li>
-              <li>
-                <span>Δt (h)</span>
-                <strong>{sim.dt_hours.toFixed(2)}</strong>
-              </li>
-              {estimatedHours && (
+          {localSim ? (
+            <>
+              <ul>
                 <li>
-                  <span>Time to consume NaOH (h)</span>
-                  <strong>{estimatedHours}</strong>
+                  <span>Time (s)</span>
+                  <strong>{localSim.time_s.toFixed(1)}</strong>
                 </li>
-              )}
-            </ul>
+                <li>
+                  <span>Na produced (kg)</span>
+                  <strong>{localSim.naProducedKg.toFixed(3)}</strong>
+                </li>
+                <li>
+                  <span>NaOH (kg)</span>
+                  <strong>{localSim.naohRemainingKg.toFixed(3)}</strong>
+                </li>
+                <li>
+                  <span>H₂ (kg)</span>
+                  <strong>{localSim.h2Kg.toFixed(5)}</strong>
+                </li>
+                <li>
+                  <span>Voltage (V)</span>
+                  <strong>{voltageV.toFixed(2)}</strong>
+                </li>
+                <li>
+                  <span>Current (A)</span>
+                  <strong>{localSim.currentA.toFixed(0)}</strong>
+                </li>
+                <li>
+                  <span>Resistance (Ω)</span>
+                  <strong>{localSim.resistanceOhm.toExponential(3)}</strong>
+                </li>
+                <li>
+                  <span>Power (W)</span>
+                  <strong>{localSim.powerW.toFixed(0)}</strong>
+                </li>
+                <li>
+                  <span>Electrode health</span>
+                  <strong>{(localSim.electrodeHealth * 100).toFixed(1)}%</strong>
+                </li>
+                {localSim.warningActive && (
+                  <li>
+                    <span>Warning</span>
+                    <strong>Electrode limit / over-current</strong>
+                  </li>
+                )}
+                {localSim.exploded && (
+                  <li>
+                    <span>Status</span>
+                    <strong>Test failed – cell destroyed</strong>
+                  </li>
+                )}
+              </ul>
+
+              <MiniGraph
+                title="Na production"
+                yLabel="kg"
+                series={localSim.history.map((p) => ({ t: p.t, y: p.naKg }))}
+              />
+              <MiniGraph
+                title="H₂ production"
+                yLabel="kg"
+                series={localSim.history.map((p) => ({ t: p.t, y: p.h2Kg }))}
+              />
+            </>
           ) : (
             <p>No data yet.</p>
           )}
