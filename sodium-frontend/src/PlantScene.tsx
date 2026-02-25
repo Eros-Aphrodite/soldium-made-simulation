@@ -110,7 +110,7 @@ const GlbModelWithFallback: React.FC = () => (
         scaleMultiplier={1.3}
       />
       {/* Label positioned above the actual gas purification tower */}
-      <Billboard position={[6, 8.0, 14.5]}>
+      <Billboard position={[6, 7.0, 14.5]}>
         <Text
           fontSize={0.38}
           color="#111827"
@@ -208,7 +208,13 @@ const GasFlowParticles: React.FC<{
   return (
     <instancedMesh ref={meshRef} args={[undefined as any, undefined as any, count]}>
       <sphereGeometry args={[1, 10, 10]} />
-      <meshStandardMaterial color={color} transparent opacity={0.0} />
+      <meshStandardMaterial
+        color={color}
+        emissive={color}
+        emissiveIntensity={1.2}
+        transparent
+        opacity={0.0}
+      />
     </instancedMesh>
   );
 };
@@ -270,11 +276,11 @@ const GasPipesAndFlow: React.FC<{ running: boolean; currentA: number }> = ({ run
       {/* Header -> Gas Purifier tower transfer line */}
       <TubePipe
         points={toPurifier}
-        radius={0.06}
+        radius={0.1}
         color="#e5e7eb"
         emissive="#e5e7eb"
-        emissiveIntensity={running ? 0.25 : 0.0}
-        opacity={0.96}
+        emissiveIntensity={running ? 0.2 : 0.0}
+        opacity={0.45}
       />
 
       {/* Flow particles (clearly show gas moving within the plant and into purifier) */}
@@ -296,11 +302,11 @@ const GasPipesAndFlow: React.FC<{ running: boolean; currentA: number }> = ({ run
       />
       <GasFlowParticles
         points={toPurifier}
-        count={70}
-        color="#fde68a"
-        speed={baseSpeed * 1.5}
+        count={140}
+        color="#facc15"
+        speed={baseSpeed * 1.7}
         running={running}
-        size={0.05}
+        size={0.09}
       />
 
       {/* Lid ports where gas exits into pipes */}
@@ -514,6 +520,64 @@ const CastnerCell: React.FC<{
         </mesh>
       </group>
 
+      {/* Raw material (NaOH) supply device near the cell */}
+      <group position={[-3.4, 0.0, -1.2]}>
+        {/* Larger feed tank that reaches down to the floor */}
+        <mesh position={[0, 1.1, 0]}>
+          <cylinderGeometry args={[1.95, 0.95, 2.2, 24]} />
+          <meshStandardMaterial color="#0ea5e9" metalness={0.3} roughness={0.45} />
+        </mesh>
+        <mesh position={[0, 2.3, 0]}>
+          <cylinderGeometry args={[0.55, 0.55, 0.35, 24]} />
+          <meshStandardMaterial color="#38bdf8" metalness={0.5} roughness={0.3} />
+        </mesh>
+        <Billboard position={[0, 3.0, 0]}>
+          <Text fontSize={0.28} color="#e5f0ff" outlineWidth={0.02} outlineColor="#0f172a">
+            NaOH feed
+          </Text>
+        </Billboard>
+      </group>
+
+      {/* Sodium treatment / storage tank: large quartz cylinder filled with paraffin */}
+      <group position={[4.4, 0.0, -4.0]}>
+        {/* Quartz outer wall, transparent and reaching to the floor */}
+        <mesh position={[0, 1.4, 0]}>
+          <cylinderGeometry args={[1.3, 1.3, 2.8, 40]} />
+          <meshPhysicalMaterial
+            color="#e5e7eb"
+            transparent
+            opacity={0.35}
+            roughness={0.15}
+            metalness={0.0}
+            clearcoat={0.8}
+            clearcoatRoughness={0.25}
+          />
+        </mesh>
+        {/* Paraffin fill inside the quartz tank */}
+        <mesh position={[0, 1.1, 0]} scale={[1, 0.75, 1]}>
+          <cylinderGeometry args={[1.1, 1.1, 2.0, 40]} />
+          <meshPhysicalMaterial
+            color="#facc15"
+            transparent
+            opacity={0.7}
+            roughness={0.25}
+            metalness={0.05}
+            clearcoat={0.6}
+            clearcoatRoughness={0.3}
+          />
+        </mesh>
+        {/* Simple dark base ring under the tank */}
+        <mesh position={[0, 0.1, 0]}>
+          <cylinderGeometry args={[1.35, 1.35, 0.2, 40]} />
+          <meshStandardMaterial color="#111827" metalness={0.6} roughness={0.6} />
+        </mesh>
+        <Billboard position={[0, 2.8, 0]}>
+          <Text fontSize={0.3} color="#fef9c3" outlineWidth={0.02} outlineColor="#0f172a">
+            Na treatment tank
+          </Text>
+        </Billboard>
+      </group>
+
       {/* Inner transparent crucible walls (molten NaOH vessel) */}
       <mesh
         position={[0, 1.35, 0]}
@@ -576,6 +640,21 @@ const CastnerCell: React.FC<{
         <torusGeometry args={[1.07, 0.07, 16, 64]} />
         <meshStandardMaterial color="#fbbf24" metalness={0.6} roughness={0.25} />
       </mesh>
+
+      {/* Pipe carrying molten sodium from the cell overflow to the treatment tank */}
+      <TubePipe
+        points={[
+          [1.3, 1.55, 0.6],
+          [2.4, 1.25, 1.1],
+          [3.4, 1.05, 1.6],
+          [4.4, 1.05, 2.0],
+        ]}
+        radius={0.08}
+        color="#facc15"
+        emissive="#facc15"
+        emissiveIntensity={running ? 0.6 : 0.1}
+        opacity={0.9}
+      />
 
       {/* Right-side cooling coil – twin springs with cross-connectors (as per sketch) */}
       <group position={[1.85, 1.0, 0]} rotation={[0, 0, 0]}>
@@ -852,9 +931,9 @@ const GasCollectors: React.FC<{ h2Kg: number }> = ({ h2Kg }) => (
 );
 
 const Floor: React.FC = () => (
-  <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
-    {/* Enlarged base pad so the integrated cockpit + gas purifier + control room sit fully on grey background */}
-    <planeGeometry args={[30, 30]} />
+  <mesh position={[0, -0.2, 0]}>
+    {/* Slightly thick slab so the grey pad is visible even from below */}
+    <boxGeometry args={[30, 0.4, 30]} />
     <meshStandardMaterial color="#9ca3af" roughness={0.7} metalness={0.0} />
   </mesh>
 );
@@ -870,6 +949,38 @@ const HighVoltageRoom: React.FC = () => (
     />
   </group>
 );
+
+const VoltmeterPanel: React.FC = () => {
+  // Mounted on the inner wall at the same control position as the previous ammeter
+  const x = -1.2;
+  const y = 0.8;
+  const z = 14.6;
+
+  return (
+    <>
+      {/* Physical voltmeter model mounted horizontally against the wall */}
+      <GlbModel
+        url="/models/voltmeter-freepoly.org.glb"
+        position={[x + 0.02, y, z]}
+        rotation={[0, Math.PI / 2, 0]}
+        scaleMultiplier={0.45}
+      />
+      {/* Simple voltage label above the instrument */}
+      <Billboard position={[x, y + 1.9, z]}>
+        <Text
+          fontSize={0.42}
+          color="#f9fafb"
+          outlineWidth={0.04}
+          outlineColor="#0f172a"
+          anchorX="center"
+          anchorY="middle"
+        >
+          V
+        </Text>
+      </Billboard>
+    </>
+  );
+};
 
 const H2TankMotion: React.FC<{ h2Kg: number }> = ({ h2Kg }) => {
   const meshRef = useRef<THREE.InstancedMesh | null>(null);
@@ -952,6 +1063,8 @@ export const PlantScene: React.FC<PlantSceneProps> = ({
           {/* Gas purification tower and enlarged control room on the grey pad */}
           <GlbModelWithFallback />
           <HighVoltageRoom />
+          {/* Voltmeter panel mounted in the control room */}
+          <VoltmeterPanel />
         </group>
       )}
       {activeModel === 'hv-room' && <HighVoltageRoom />}
