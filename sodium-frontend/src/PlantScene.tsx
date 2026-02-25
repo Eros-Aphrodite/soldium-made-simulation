@@ -21,7 +21,7 @@ const GlbModel: React.FC<{
   const { scene } = useGLTF(url);
 
   const groupRef = useRef<THREE.Group | null>(null);
-  const [focusLevel, setFocusLevel] = useState(0);
+  const focusLevelRef = useRef(0);
   const [detailActive, setDetailActive] = useState(false);
 
   const { cloned, scale, height } = useMemo(() => {
@@ -51,14 +51,16 @@ const GlbModel: React.FC<{
 
   // Smoothly enlarge / highlight the GLB when a numbered hotspot dot is clicked.
   useFrame((_, delta) => {
-    if (!groupRef.current) return;
+    const group = groupRef.current;
+    if (!group) return;
+
     const target = detailActive ? 1 : 0;
-    setFocusLevel((prev) => {
-      const next = prev + (target - prev) * Math.min(1, delta * 4);
-      const sExtra = 1 + next * 0.35;
-      groupRef.current.scale.set(scale * sExtra, scale * sExtra, scale * sExtra);
-      return next;
-    });
+    const prev = focusLevelRef.current;
+    const next = prev + (target - prev) * Math.min(1, delta * 4);
+    focusLevelRef.current = next;
+
+    const sExtra = 1 + next * 0.35;
+    group.scale.set(scale * sExtra, scale * sExtra, scale * sExtra);
   });
 
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
@@ -101,14 +103,19 @@ const GlbModelWithFallback: React.FC = () => (
   >
     {/* Gas purification skid with integrated control room */}
     <group>
+      {/* Dark plinth so the gas box visually sits on its own base */}
+      <mesh position={[6, 0.05, 2.5]}>
+        <boxGeometry args={[4.2, 0.2, 4.2]} />
+        <meshStandardMaterial color="#111827" metalness={0.7} roughness={0.5} />
+      </mesh>
       <GlbModel
         url={keuvModelUrl}
-        position={[0, 0.1, 2.5]}
+        position={[6.0, 0.0, 14.5]}
         rotation={[0, 0, 0]}
-        scaleMultiplier={0.9}
+        scaleMultiplier={1.3}
       />
       {/* Label above the tower, like the H2/O2 bottles, fully visible */}
-      <Billboard position={[4, 4.1, 0.6]}>
+      <Billboard position={[6, 4.1, 0.6]}>
         <Text
           fontSize={0.38}
           color="#111827"
@@ -226,7 +233,7 @@ const GasFlowParticles: React.FC<{
 
   return (
     <instancedMesh ref={meshRef} args={[undefined as any, undefined as any, count]}>
-      <sphereGeometry args={[0, 10, 10]} />
+      <sphereGeometry args={[1, 10, 10]} />
       <meshStandardMaterial color={color} transparent opacity={0.0} />
     </instancedMesh>
   );
@@ -243,16 +250,25 @@ const GasPipesAndFlow: React.FC<{ running: boolean; currentA: number }> = ({ run
   const o2BottleIn: [number, number, number] = [0.85, 3.75, 0.95];
   const h2BottleIn: [number, number, number] = [-0.85, 3.75, 0.95];
 
-  // Header where gases are collected before purification.
-  const header: [number, number, number] = [3.55, 2.85, 0.2];
+  // Outlet from the H2 storage bottle (top of the green H2 tank), then down to floor level.
+  const h2TankOutTop: [number, number, number] = [-0.85, 4.0, 0.95];
+  const h2TankOutFloor: [number, number, number] = [-0.85, 0.8, 0.95];
 
-  // Connection from header over to the external Gas Purifier tower
-  // mounted near (0, 0, 2.5) in world space.
-  const purifierInlet: [number, number, number] = [0.0, 2.7, 2.5];
+  // Connection from H2 tank outlet that immediately steps OUTSIDE the reactor area,
+  // then runs in mostly straight segments past the central control cabinets and
+  // finally into the gas purification/control skid on the right.
+  const purifierInlet: [number, number, number] = [6.4, 1.8, 14];
   const toPurifier: [number, number, number][] = [
-    header,
-    [1.4, 2.9, 1.0],
-    [0.7, 2.9, 1.8],
+    h2TankOutTop,
+    h2TankOutFloor,
+    // step outward, away from the electrolysis bath and coils
+    [-0.85, 0.8, 3.0],
+    // long, mostly straight run past the central control center
+    [3.5, 0.8, 3.0],
+    [6.0, 0.8, 3.0],
+    [6.0, 0.8, 10.0],
+    // short horizontal just in front of the purifier skid, then vertical up to the inlet
+    [purifierInlet[0], 0.8, purifierInlet[2]],
     purifierInlet,
   ];
 
@@ -315,7 +331,7 @@ const GasPipesAndFlow: React.FC<{ running: boolean; currentA: number }> = ({ run
         size={0.05}
       />
 
-      {/* Lid ports + header junction */}
+      {/* Lid ports where gas exits into pipes */}
       <mesh position={lidO2Out}>
         <cylinderGeometry args={[0.07, 0.07, 0.08, 18]} />
         <meshStandardMaterial color="#93c5fd" metalness={0.6} roughness={0.3} />
@@ -323,16 +339,6 @@ const GasPipesAndFlow: React.FC<{ running: boolean; currentA: number }> = ({ run
       <mesh position={lidH2Out}>
         <cylinderGeometry args={[0.07, 0.07, 0.08, 18]} />
         <meshStandardMaterial color="#86efac" metalness={0.6} roughness={0.3} />
-      </mesh>
-      <mesh position={header}>
-        <sphereGeometry args={[0.12, 20, 20]} />
-        <meshStandardMaterial
-          color="#cbd5e1"
-          metalness={0.55}
-          roughness={0.35}
-          emissive="#e5e7eb"
-          emissiveIntensity={running ? 0.12 : 0.0}
-        />
       </mesh>
     </group>
   );
@@ -799,55 +805,6 @@ const CastnerCell: React.FC<{
   );
 };
 
-const Transformer: React.FC = () => (
-  <group position={[-3.2, 0.7, -1.5]}>
-    <mesh>
-      <boxGeometry args={[2.4, 1.2, 1.4]} />
-      <meshStandardMaterial color="#6b7280" metalness={0.4} roughness={0.5} />
-    </mesh>
-    {/* bushings */}
-    <mesh position={[-0.7, 0.9, 0.5]}>
-      <cylinderGeometry args={[0.12, 0.12, 0.5, 32]} />
-      <meshStandardMaterial color="#e5e7eb" />
-    </mesh>
-    <mesh position={[0.7, 0.9, 0.5]}>
-      <cylinderGeometry args={[0.12, 0.12, 0.5, 32]} />
-      <meshStandardMaterial color="#e5e7eb" />
-    </mesh>
-  </group>
-);
-
-const WiringAndMeter: React.FC = () => (
-  <group>
-    {/* Leads from transformer bushings to electrodes */}
-    <mesh position={[-1.6, 1.1, -0.5]} rotation={[0, 0.4, 0]}>
-      <cylinderGeometry args={[0.05, 0.05, 3.2, 16]} />
-      <meshStandardMaterial color="#ef4444" />
-    </mesh>
-    <mesh position={[1.6, 1.1, -0.5]} rotation={[0, -0.4, 0]}>
-      <cylinderGeometry args={[0.05, 0.05, 3.2, 16]} />
-      <meshStandardMaterial color="#22c55e" />
-    </mesh>
-
-    {/* Simple voltmeter box */}
-    <group position={[-2.8, 1.1, 1.4]}>
-      <mesh>
-        <boxGeometry args={[1.2, 0.6, 0.4]} />
-        <meshStandardMaterial color="#111827" />
-      </mesh>
-      <mesh position={[0, 0.02, 0.22]} rotation={[0, 0, 0]}>
-        <planeGeometry args={[0.9, 0.4]} />
-        <meshBasicMaterial color="#0f172a" />
-      </mesh>
-      {/* indicator needle */}
-      <mesh position={[-0.25, 0.05, 0.24]}>
-        <boxGeometry args={[0.5, 0.02, 0.02]} />
-        <meshStandardMaterial color="#e5e7eb" />
-      </mesh>
-    </group>
-  </group>
-);
-
 const GasCollectors: React.FC<{ h2Kg: number }> = ({ h2Kg }) => (
   // O2 / H2 capture bottles on the top plate
   <group position={[0, 0, 0]}>
@@ -1006,8 +963,9 @@ export const PlantScene: React.FC<PlantSceneProps> = ({
       <Floor />
       {/* Only one major 3D model group is shown at a time for clear inspection. */}
       {activeModel === 'plant' && (
-        <>
-          {/* Core sodium production cell at scene origin */}
+        // Center the integrated plant + gas purification + control room block on the grey pad
+        <group position={[0, 0, -4.5]}>
+          {/* Core sodium production cell */}
           <CastnerCell
             productionKg={productionKg}
             currentA={currentA}
@@ -1022,7 +980,7 @@ export const PlantScene: React.FC<PlantSceneProps> = ({
           {/* Gas purification tower and enlarged control room on the grey pad */}
           <GlbModelWithFallback />
           <HighVoltageRoom />
-        </>
+        </group>
       )}
       {activeModel === 'hv-room' && <HighVoltageRoom />}
       <OrbitControls enableDamping />
