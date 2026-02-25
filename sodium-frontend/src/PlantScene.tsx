@@ -1,7 +1,64 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Text } from '@react-three/drei';
+import { Billboard, Html, OrbitControls, Text, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
+
+import keuvModelUrl from './assets/KEUV_export_aero.glb?url';
+
+useGLTF.preload(keuvModelUrl);
+
+const TARGET_SIZE = 3;
+
+const GlbModel: React.FC<{
+  url: string;
+  position?: [number, number, number];
+  rotation?: [number, number, number];
+}> = ({ url, position = [0, 0, 0], rotation = [0, 0, 0] }) => {
+  const { scene } = useGLTF(url);
+  const { cloned, scale } = useMemo(() => {
+    const c = scene.clone();
+    const box = new THREE.Box3().setFromObject(c);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    c.position.sub(center);
+    const maxDim = Math.max(size.x, size.y, size.z, 1e-6);
+    const s = TARGET_SIZE / maxDim;
+    return { cloned: c, scale: s };
+  }, [scene]);
+
+  useEffect(() => {
+    cloned.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
+  }, [cloned]);
+
+  return (
+    <group position={position} rotation={rotation} scale={[scale, scale, scale]}>
+      <primitive object={cloned} />
+    </group>
+  );
+};
+
+const GlbModelWithFallback: React.FC = () => (
+  <Suspense
+    fallback={
+      <mesh position={[4, 0.5, 0]}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial color="#22c55e" />
+        <Html center>
+          <span style={{ color: '#22c55e', fontSize: 12 }}>Loading model…</span>
+        </Html>
+      </mesh>
+    }
+  >
+    <GlbModel url={keuvModelUrl} position={[4, 0.5, 0]} rotation={[0, 0, 0]} />
+  </Suspense>
+);
 
 type PlantSceneProps = {
   productionKg: number;
@@ -123,7 +180,8 @@ const GasPipesAndFlow: React.FC<{ running: boolean; currentA: number }> = ({ run
   const h2BottleIn: [number, number, number] = [-0.85, 3.35, 0.95];
 
   const header: [number, number, number] = [1.55, 2.85, 0.2];
-  const wellIn: [number, number, number] = [4.9, 2.75, 0.4];
+  // Entry point into the side wall of the gas well
+  const wellIn: [number, number, number] = [4.2, 2.15, 0.2];
 
   const toO2: [number, number, number][] = [lidO2Out, [0.7, 3.1, 0.9], o2BottleIn];
   const toH2: [number, number, number][] = [lidH2Out, [-0.7, 3.1, 0.9], h2BottleIn];
@@ -254,9 +312,7 @@ const CastnerCell: React.FC<{
   onCathodeClick?: () => void;
   onAnodeClick?: () => void;
   onElectrolyteClick?: () => void;
-}> = ({ productionKg, currentA, running, onCathodeClick, onAnodeClick, onElectrolyteClick }) => {
-  // Clamp a reasonable range for visual scaling of the sodium collection pot
-  const collectionHeight = 0.4 + Math.min(productionKg / 50, 2.5);
+}> = ({ productionKg: _productionKg, currentA, running, onCathodeClick, onAnodeClick, onElectrolyteClick }) => {
   // Activity is driven by current and only when simulation is running
   const currentScaled = Math.min(Math.abs(currentA) / 10_000, 2.0);
   const activity = running ? Math.min(currentScaled, 1.0) : 0; // 0–1 activity metric
@@ -367,7 +423,7 @@ const CastnerCell: React.FC<{
       </mesh>
 
       {/* Right-side cooling coil (stylised, like drawing) */}
-      <group position={[1.85, 1.2, 0.15]} rotation={[0, 0, 0]}>
+      <group position={[1.85, 1.1, 0.0]} rotation={[0, 0, 0]}>
         {Array.from({ length: 7 }).map((_, i) => (
           <mesh key={i} position={[0, i * 0.22, 0]}>
             <torusGeometry args={[0.55, 0.06, 16, 48]} />
@@ -375,11 +431,11 @@ const CastnerCell: React.FC<{
           </mesh>
         ))}
         {/* inlet/outlet stubs */}
-        <mesh position={[-0.62, 0.66, 0]} rotation={[0, 0, Math.PI / 2]}>
+        <mesh position={[-0.62, 0.66, -0.25]} rotation={[0, 0, Math.PI / 2]}>
           <cylinderGeometry args={[0.06, 0.06, 0.6, 16]} />
           <meshStandardMaterial color="#9ca3af" metalness={0.8} roughness={0.25} />
         </mesh>
-        <mesh position={[0.62, 0.22, 0]} rotation={[0, 0, Math.PI / 2]}>
+        <mesh position={[0.62, 0.22, -0.25]} rotation={[0, 0, Math.PI / 2]}>
           <cylinderGeometry args={[0.06, 0.06, 0.6, 16]} />
           <meshStandardMaterial color="#9ca3af" metalness={0.8} roughness={0.25} />
         </mesh>
@@ -628,7 +684,7 @@ const WiringAndMeter: React.FC = () => (
   </group>
 );
 
-const GasCollectors: React.FC = () => (
+const GasCollectors: React.FC<{ h2Kg: number }> = ({ h2Kg }) => (
   // Place bottles on the top plate, like the drawing
   <group position={[0, 0, 0]}>
     {/* O2 bottle */}
@@ -688,17 +744,16 @@ const GasCollectors: React.FC = () => (
           clearcoat={0.5}
         />
       </mesh>
-      <Text
-        position={[0, 2.35, 0]}
-        fontSize={0.26}
-        color="#bbf7d0"
-        outlineWidth={0.02}
-        outlineColor="#0f172a"
-        anchorX="center"
-        anchorY="middle"
-      >
-        H2
-      </Text>
+      <Billboard position={[0, 2.35, 0]}>
+        <Text fontSize={0.26} color="#bbf7d0" outlineWidth={0.02} outlineColor="#0f172a">
+          H2
+        </Text>
+      </Billboard>
+
+      {/* H2 thermal motion INSIDE the bottle */}
+      <group position={[0, 0.95, 0]}>
+        <H2TankMotion h2Kg={h2Kg} />
+      </group>
     </group>
 
     {/* Large gas well / storage vessel connected to manifold */}
@@ -726,17 +781,11 @@ const GasCollectors: React.FC = () => (
           clearcoatRoughness={0.25}
         />
       </mesh>
-      <Text
-        position={[0, 3.85, 0]}
-        fontSize={0.22}
-        color="#e5e7eb"
-        outlineWidth={0.02}
-        outlineColor="#0f172a"
-        anchorX="center"
-        anchorY="middle"
-      >
-        Gas well
-      </Text>
+      <Billboard position={[0, 3.85, 0]}>
+        <Text fontSize={0.22} color="#e5e7eb" outlineWidth={0.02} outlineColor="#0f172a">
+          Gas well
+        </Text>
+      </Billboard>
     </group>
   </group>
 );
@@ -765,14 +814,15 @@ const Floor: React.FC = () => (
 const H2TankMotion: React.FC<{ h2Kg: number }> = ({ h2Kg }) => {
   const meshRef = useRef<THREE.InstancedMesh | null>(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
-  const count = 160;
+  const count = 55;
 
   const seeds = useMemo(
     () =>
       new Array(count).fill(0).map(() => ({
-        x: (Math.random() * 2 - 1) * 0.25,
-        y: Math.random() * 1.2 + 0.3,
-        z: (Math.random() * 2 - 1) * 0.25,
+        // Center in the tank: tight radius so particles cluster in the middle
+        x: (Math.random() * 2 - 1) * 0.12,
+        y: Math.random() * 0.55 + 0.3,
+        z: (Math.random() * 2 - 1) * 0.12,
         phase: Math.random() * 10,
       })),
     [count],
@@ -781,16 +831,16 @@ const H2TankMotion: React.FC<{ h2Kg: number }> = ({ h2Kg }) => {
   useFrame(({ clock }) => {
     if (!meshRef.current) return;
     const t = clock.getElapsedTime();
-    const intensity = Math.min(h2Kg / 10, 1.5);
+    const intensity = Math.min(h2Kg / 25, 0.85);
 
     seeds.forEach((s, i) => {
-      const jitter = 0.05 * intensity;
-      dummy.position.set(
-        s.x + Math.sin(t * 3 + s.phase) * jitter,
-        s.y + Math.cos(t * 2.5 + s.phase) * jitter,
-        s.z + Math.sin(t * 2 + s.phase) * jitter,
-      );
-      const scale = 0.04;
+      const jitter = 0.025 * intensity;
+      const x = s.x + Math.sin(t * 3 + s.phase) * jitter;
+      const baseY = s.y + Math.cos(t * 2.5 + s.phase) * jitter;
+      const y = Math.min(0.95, Math.max(0.25, baseY));
+      const z = s.z + Math.sin(t * 2 + s.phase) * jitter;
+      dummy.position.set(x, y, z);
+      const scale = 0.028;
       dummy.scale.set(scale, scale, scale);
       dummy.updateMatrix();
       meshRef.current!.setMatrixAt(i, dummy.matrix);
@@ -822,6 +872,7 @@ export const PlantScene: React.FC<PlantSceneProps> = ({
       <ambientLight intensity={0.45} />
       <directionalLight position={[5, 10, 6]} intensity={1.3} />
       <Floor />
+      <GlbModelWithFallback />
       <CastnerCell
         productionKg={productionKg}
         currentA={currentA}
@@ -832,12 +883,8 @@ export const PlantScene: React.FC<PlantSceneProps> = ({
       />
       <GasHood />
       <Transformer />
-      <GasCollectors />
+      <GasCollectors h2Kg={h2Kg} />
       <GasPipesAndFlow running={running} currentA={currentA} />
-      {/* H2 thermal motion inside H2 tank, positioned to match the green tank group */}
-      <group position={[4.0, 0.8, -1.8]}>
-        <H2TankMotion h2Kg={h2Kg} />
-      </group>
       <WiringAndMeter />
       <OrbitControls enableDamping />
     </Canvas>
