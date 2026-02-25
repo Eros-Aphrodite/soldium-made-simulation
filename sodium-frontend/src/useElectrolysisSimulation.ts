@@ -20,11 +20,14 @@ type SimState = {
   warningActive: boolean;
   warningReason: FailureReason;
   exploded: boolean;
+  warningElapsed_s: number;
   history: HistoryPoint[];
 };
 
 export type ElectrolysisParams = {
   voltageV: number;
+  targetPowerKW?: number;
+  mode?: 'voltage' | 'power';
   naohInitialKg: number;
   running: boolean;
   dtSeconds?: number;
@@ -36,6 +39,8 @@ const M_H2_KG_PER_MOL = 0.002016; // kg/mol
 
 export function useElectrolysisSimulation({
   voltageV,
+  targetPowerKW = 0,
+  mode = 'voltage',
   naohInitialKg,
   running,
   dtSeconds = 0.25,
@@ -54,6 +59,7 @@ export function useElectrolysisSimulation({
     warningActive: false,
     warningReason: null,
     exploded: false,
+    warningElapsed_s: 0,
     history: [],
   }));
 
@@ -81,7 +87,11 @@ export function useElectrolysisSimulation({
         const wear = 1 - prev.electrodeHealth;
         const resistanceOhm = R0 * (1 + 2.0 * depletion + 3.0 * wear);
 
-        const voltage = Math.max(voltageV, 0);
+        let voltage = Math.max(voltageV, 0);
+        if (mode === 'power' && targetPowerKW > 0 && resistanceOhm > 0) {
+          const targetW = targetPowerKW * 1000;
+          voltage = Math.sqrt(targetW * resistanceOhm);
+        }
         const currentA = voltage > 0 && resistanceOhm > 0 ? voltage / resistanceOhm : 0;
         const powerW = voltage * currentA;
 
@@ -96,6 +106,7 @@ export function useElectrolysisSimulation({
         let warningReason: FailureReason = prev.warningReason;
         let warningActive = prev.warningActive;
         let exploded = prev.exploded;
+        let warningElapsed_s = prev.warningElapsed_s;
 
         if (!exploded && (overCurrent || endOfLife)) {
           warningActive = true;
@@ -104,13 +115,13 @@ export function useElectrolysisSimulation({
           }
         }
 
-        // When warning is active, start a simple countdown based on time delta
-        let warningTimer = 0;
         if (warningActive) {
-          warningTimer += dt;
-          if (warningTimer >= 10) {
+          warningElapsed_s += dt;
+          if (warningElapsed_s >= 10) {
             exploded = true;
           }
+        } else {
+          warningElapsed_s = 0;
         }
 
         // Effective current for production (reduced when warning or damaged)
@@ -160,13 +171,14 @@ export function useElectrolysisSimulation({
           warningActive,
           warningReason,
           exploded,
+          warningElapsed_s,
           history,
         };
       });
     }, dt * 1000);
 
     return () => clearInterval(id);
-  }, [running, dtSeconds, voltageV, state.exploded]);
+  }, [running, dtSeconds, voltageV, targetPowerKW, mode, state.exploded]);
 
   return state;
 }

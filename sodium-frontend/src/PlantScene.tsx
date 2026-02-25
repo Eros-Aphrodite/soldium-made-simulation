@@ -132,6 +132,9 @@ type PlantSceneProps = {
   running: boolean;
   h2Kg: number;
   activeModel: 'plant' | 'hv-room';
+  warningActive: boolean;
+  exploded: boolean;
+  warningElapsed_s: number;
   onCathodeClick?: () => void;
   onAnodeClick?: () => void;
   onElectrolyteClick?: () => void;
@@ -1037,39 +1040,160 @@ export const PlantScene: React.FC<PlantSceneProps> = ({
   running,
   h2Kg,
   activeModel,
+  warningActive,
+  exploded,
+  warningElapsed_s,
   onCathodeClick,
   onAnodeClick,
   onElectrolyteClick,
 }) => {
+  const [gasExploded, setGasExploded] = useState(false);
+
+  useEffect(() => {
+    if (!exploded) {
+      setGasExploded(false);
+      return;
+    }
+    const id = setTimeout(() => setGasExploded(true), 1000);
+    return () => clearTimeout(id);
+  }, [exploded]);
+
   return (
     <Canvas camera={{ position: [6, 5, 8], fov: 45 }}>
       <color attach="background" args={['#020617']} />
       <ambientLight intensity={0.45} />
       <directionalLight position={[5, 10, 6]} intensity={1.3} />
       <Floor />
-      {/* Only one major 3D model group is shown at a time for clear inspection. */}
-      {activeModel === 'plant' && (
-        // Center the integrated plant + gas purification + control room block on the grey pad
-        <group position={[0, 0, -4.5]}>
-          {/* Core sodium production cell */}
-          <CastnerCell
-            productionKg={productionKg}
-            currentA={currentA}
-            running={running}
-            onCathodeClick={onCathodeClick}
-            onAnodeClick={onAnodeClick}
-            onElectrolyteClick={onElectrolyteClick}
-          />
-          {/* Gas handling: bottles on top of the cell and external purifier to the right */}
-          <GasCollectors h2Kg={h2Kg} />
-          <GasPipesAndFlow running={running} currentA={currentA} />
-          {/* Gas purification tower and enlarged control room on the grey pad */}
-          <GlbModelWithFallback />
-          <HighVoltageRoom />
-          {/* Voltmeter panel mounted in the control room */}
-          <VoltmeterPanel />
-        </group>
+      {warningActive && !exploded && (
+        <>
+          <Billboard position={[0, 6.0, 0]}>
+            <Text
+              fontSize={1.1}
+              color="#fecaca"
+              outlineWidth={0.09}
+              outlineColor="#7f1d1d"
+              anchorX="center"
+              anchorY="middle"
+            >
+              WARNING: Electrode limit / over-current
+            </Text>
+          </Billboard>
+          <Billboard position={[0, 4.8, 0]}>
+            <Text
+              fontSize={1.4}
+              color="#fee2e2"
+              outlineWidth={0.12}
+              outlineColor="#7f1d1d"
+              anchorX="center"
+              anchorY="middle"
+            >
+              {Math.max(0, 10 - warningElapsed_s).toFixed(1)} s
+            </Text>
+          </Billboard>
+        </>
       )}
+      {/* Only one major 3D model group is shown at a time for clear inspection. */}
+      {activeModel === 'plant' &&
+        (exploded ? (
+          <group position={[0, 0, -4.5]}>
+            {/* Vivid explosion scene: bright fireball, debris, and (after delay) toppled gas tank */}
+            <group>
+              <mesh position={[0, 2, 0]} scale={[1.4, 1.4, 1.4]}>
+                <sphereGeometry args={[2.2, 48, 48]} />
+                <meshStandardMaterial
+                  color="#f97316"
+                  emissive="#f97316"
+                  emissiveIntensity={3.2}
+                  transparent
+                  opacity={0.75}
+                />
+              </mesh>
+              <mesh position={[0, 2.4, 0]} scale={[1.9, 1.0, 1.9]}>
+                <sphereGeometry args={[2.7, 32, 32]} />
+                <meshStandardMaterial
+                  color="#facc15"
+                  emissive="#facc15"
+                  emissiveIntensity={1.6}
+                  transparent
+                  opacity={0.3}
+                />
+              </mesh>
+
+              {/* Debris plates around the cell footprint */}
+              <mesh position={[-2.4, 0.25, 0.6]} rotation={[0, 0.3, 0.2]}>
+                <boxGeometry args={[2.4, 0.2, 1.4]} />
+                <meshStandardMaterial color="#1f2937" />
+              </mesh>
+              <mesh position={[2.1, 0.2, -0.8]} rotation={[0.1, -0.4, -0.3]}>
+                <boxGeometry args={[2.0, 0.18, 1.2]} />
+                <meshStandardMaterial color="#111827" />
+              </mesh>
+              <mesh position={[0.4, 0.3, 1.9]} rotation={[0.15, 0.2, -0.2]}>
+                <boxGeometry args={[1.8, 0.16, 1.0]} />
+                <meshStandardMaterial color="#374151" />
+              </mesh>
+
+              {/* Gas / Na treatment tank explodes 1s after cell */}
+              {gasExploded && (
+                <group position={[4.4, 0.2, -4.0]} rotation={[0.7, 0.4, 0]}>
+                  <mesh position={[0, 1.4, 0]}>
+                    <cylinderGeometry args={[1.3, 1.3, 2.8, 32]} />
+                    <meshStandardMaterial
+                      color="#e5e7eb"
+                      transparent
+                      opacity={0.25}
+                      metalness={0}
+                      roughness={0.2}
+                    />
+                  </mesh>
+                  <mesh position={[0, 1.1, 0]} scale={[1, 0.75, 1]}>
+                    <cylinderGeometry args={[1.1, 1.1, 2.0, 32]} />
+                    <meshStandardMaterial
+                      color="#facc15"
+                      transparent
+                      opacity={0.6}
+                      roughness={0.3}
+                    />
+                  </mesh>
+                </group>
+              )}
+            </group>
+
+            <Billboard position={[0, 9.0, 0]}>
+              <Text
+                fontSize={1.1}
+                color="#fecaca"
+                outlineWidth={0.1}
+                outlineColor="#7f1d1d"
+                anchorX="center"
+                anchorY="middle"
+              >
+                TEST FAILED – CELL EXPLODED
+              </Text>
+            </Billboard>
+          </group>
+        ) : (
+          // Center the integrated plant + gas purification + control room block on the grey pad
+          <group position={[0, 0, -4.5]}>
+            {/* Core sodium production cell */}
+            <CastnerCell
+              productionKg={productionKg}
+              currentA={currentA}
+              running={running}
+              onCathodeClick={onCathodeClick}
+              onAnodeClick={onAnodeClick}
+              onElectrolyteClick={onElectrolyteClick}
+            />
+            {/* Gas handling: bottles on top of the cell and external purifier to the right */}
+            <GasCollectors h2Kg={h2Kg} />
+            <GasPipesAndFlow running={running} currentA={currentA} />
+            {/* Gas purification tower and enlarged control room on the grey pad */}
+            <GlbModelWithFallback />
+            <HighVoltageRoom />
+            {/* Voltmeter panel mounted in the control room */}
+            <VoltmeterPanel />
+          </group>
+        ))}
       {activeModel === 'hv-room' && <HighVoltageRoom />}
       <OrbitControls enableDamping />
     </Canvas>

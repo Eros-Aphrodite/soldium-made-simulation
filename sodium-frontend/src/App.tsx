@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import { PlantScene } from './PlantScene';
 import { useElectrolysisSimulation } from './useElectrolysisSimulation';
@@ -17,52 +17,12 @@ type SimulationState = {
 
 const API_BASE = 'http://127.0.0.1:8000';
 
-type MiniGraphProps = {
-  title: string;
-  series: { t: number; y: number }[];
-  yLabel: string;
-};
-
-function MiniGraph({ title, series, yLabel }: MiniGraphProps) {
-  if (!series.length) return null;
-
-  const t0 = series[0].t;
-  const tLast = series[series.length - 1].t || t0 + 1;
-  const xs = series.map((p) => p.t);
-  const ys = series.map((p) => p.y);
-  const minY = Math.min(...ys, 0);
-  const maxY = Math.max(...ys, 1e-6);
-
-  const width = 220;
-  const height = 80;
-
-  const path = series
-    .map((p, i) => {
-      const x = ((p.t - t0) / (tLast - t0 || 1)) * (width - 10) + 5;
-      const normY = (p.y - minY) / (maxY - minY || 1);
-      const y = height - 5 - normY * (height - 10);
-      return `${i === 0 ? 'M' : 'L'}${x},${y}`;
-    })
-    .join(' ');
-
-  return (
-    <div className="mini-graph">
-      <div className="mini-graph-header">
-        <span>{title}</span>
-        <span className="mini-graph-ylabel">{yLabel}</span>
-      </div>
-      <svg width={width} height={height}>
-        <path d={path} stroke="#22c55e" strokeWidth={2} fill="none" />
-      </svg>
-    </div>
-  );
-}
-
 function App() {
   const [sim, setSim] = useState<SimulationState | null>(null);
   const [currentAInput, setCurrentAInput] = useState('4.0'); // now used as voltage input (V)
   const [dtInput, setDtInput] = useState('1');
   const [naohMassInput, setNaohMassInput] = useState('10'); // kg
+  const [powerKWInput, setPowerKWInput] = useState('0'); // optional power target
   const [estimatedHours, setEstimatedHours] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [status, setStatus] = useState<string>('');
@@ -70,6 +30,10 @@ function App() {
     'none',
   );
   const [activeModel, setActiveModel] = useState<'plant' | 'hv-room'>('plant');
+  const [showGraphModal, setShowGraphModal] = useState(false);
+  const explosionCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const explosionTriggerRef = useRef<((pos: { x: number; y: number }) => void) | null>(null);
+  const prevExplodedRef = useRef(false);
 
   async function fetchState() {
     try {
@@ -177,6 +141,8 @@ function App() {
 
   const localSim = useElectrolysisSimulation({
     voltageV,
+    targetPowerKW: parseFloat(powerKWInput) || 0,
+    mode: (parseFloat(powerKWInput) || 0) > 0 ? 'power' : 'voltage',
     naohInitialKg: parseFloat(naohMassInput) || 0,
     running: isRunning,
     dtSeconds: 0.25,
@@ -185,6 +151,158 @@ function App() {
   const productionKg = localSim.naProducedKg;
   const currentAForViz = localSim.currentA;
   const h2Kg = localSim.h2Kg;
+
+  // Explosion overlay effect (2D canvas, based on cell.html)
+  useEffect(() => {
+    const canvas = explosionCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    type SmokeType = 'burst' | 'stalk';
+    type SmokeParticle = {
+      x: number;
+      y: number;
+      type: SmokeType;
+      size: number;
+      vx: number;
+      vy: number;
+      life: number;
+      decay: number;
+      colorVal: number;
+    };
+
+    const particles: SmokeParticle[] = [];
+    let flashIntensity = 0;
+
+    const resize = () => {
+      canvas.width = canvas.clientWidth;
+      canvas.height = canvas.clientHeight;
+    };
+    resize();
+    window.addEventListener('resize', resize);
+
+    function addSmoke(x: number, y: number, type: SmokeType, speedMult = 1) {
+      particles.push({
+        x,
+        y,
+        type,
+        size: Math.random() * 10 + 5,
+        vx: (Math.random() - 0.5) * (type === 'burst' ? 25 : 5) * speedMult,
+        vy: (type === 'burst' ? (Math.random() - 0.5) * 15 : -Math.random() * 10) * speedMult,
+        life: 1,
+        decay: Math.random() * 0.01 + 0.005,
+        colorVal: 255,
+      });
+    }
+
+    function detonateAt(x: number, y: number) {
+      flashIntensity = 1;
+      // immediate high-velocity burst
+      for (let i = 0; i < 100; i++) addSmoke(x, y, 'burst', 2);
+
+      // continuous updraft (mushroom)
+      let count = 0;
+      const seq = setInterval(() => {
+        for (let i = 0; i < 10; i++) {
+          // stalk
+          addSmoke(x + (Math.random() - 0.5) * 30, y - count * 2, 'stalk', 1);
+          // cap
+          if (count > 15) {
+            addSmoke(x + (Math.random() - 0.5) * 100, y - count * 8, 'burst', 0.5);
+          }
+        }
+        if (count++ > 50) clearInterval(seq);
+      }, 30);
+    }
+
+    explosionTriggerRef.current = (pos) => {
+      detonateAt(pos.x, pos.y);
+    };
+
+    let frameId: number;
+    const loop = () => {
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+
+      // subtle dark veil
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.fillRect(0, 0, w, h);
+
+      // update + draw particles
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vx *= 0.96;
+        p.vy *= 0.98;
+        p.life -= p.decay;
+        p.size += 1.2;
+        if (p.life < 0.7) p.colorVal -= 5;
+        if (p.life <= 0) {
+          particles.splice(i, 1);
+          continue;
+        }
+
+        ctx.globalAlpha = p.life;
+        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+        const c = Math.max(0, p.colorVal);
+        if (p.life > 0.8) {
+          g.addColorStop(0, '#fff');
+          g.addColorStop(0.4, '#ffaa00');
+        } else {
+          g.addColorStop(0, `rgb(${c},${c},${c})`);
+        }
+        g.addColorStop(1, 'transparent');
+        ctx.fillStyle = g;
+        ctx.fillRect(p.x - p.size, p.y - p.size, p.size * 2, p.size * 2);
+      }
+
+      // screen flash
+      if (flashIntensity > 0) {
+        ctx.fillStyle = `rgba(255,255,255,${flashIntensity})`;
+        ctx.fillRect(0, 0, w, h);
+        flashIntensity -= 0.05;
+      }
+
+      frameId = requestAnimationFrame(loop);
+    };
+    frameId = requestAnimationFrame(loop);
+
+    return () => {
+      window.removeEventListener('resize', resize);
+      cancelAnimationFrame(frameId);
+      explosionTriggerRef.current = null;
+    };
+  }, []);
+
+  // trigger explosions when sim marks exploded
+  useEffect(() => {
+    if (!localSim.exploded || prevExplodedRef.current) {
+      prevExplodedRef.current = localSim.exploded;
+      return;
+    }
+    prevExplodedRef.current = true;
+
+    const canvas = explosionCanvasRef.current;
+    const trigger = explosionTriggerRef.current;
+    if (!canvas || !trigger) return;
+    const w = canvas.clientWidth || canvas.width;
+    const h = canvas.clientHeight || canvas.height;
+
+    // approximate positions: cell (left), gas tank (right)
+    trigger({ x: w * 0.38, y: h * 0.7 });
+    const id = setTimeout(() => {
+      const t2 = explosionTriggerRef.current;
+      const c2 = explosionCanvasRef.current;
+      if (!t2 || !c2) return;
+      const w2 = c2.clientWidth || c2.width;
+      const h2 = c2.clientHeight || c2.height;
+      t2({ x: w2 * 0.72, y: h2 * 0.7 });
+    }, 1000);
+    return () => clearTimeout(id);
+  }, [localSim.exploded]);
 
   return (
     <div className="app-root">
@@ -198,6 +316,15 @@ function App() {
               type="number"
               value={currentAInput}
               onChange={(e) => setCurrentAInput(e.target.value)}
+            />
+          </label>
+          <label>
+            <span>Power target (kW, optional)</span>
+            <input
+              type="number"
+              step="0.1"
+              value={powerKWInput}
+              onChange={(e) => setPowerKWInput(e.target.value)}
             />
           </label>
           <label>
@@ -230,6 +357,7 @@ function App() {
               {isRunning ? 'Pause' : 'Run'}
             </button>
             <button onClick={handleEstimateTime}>Estimate time</button>
+            <button onClick={() => setShowGraphModal(true)}>View graphs</button>
           </div>
         </div>
 
@@ -287,17 +415,6 @@ function App() {
                   </li>
                 )}
               </ul>
-
-              <MiniGraph
-                title="Na production"
-                yLabel="kg"
-                series={localSim.history.map((p) => ({ t: p.t, y: p.naKg }))}
-              />
-              <MiniGraph
-                title="H₂ production"
-                yLabel="kg"
-                series={localSim.history.map((p) => ({ t: p.t, y: p.h2Kg }))}
-              />
             </>
           ) : (
             <p>No data yet.</p>
@@ -308,30 +425,20 @@ function App() {
       </div>
 
       <div className="canvas-container">
-        <div className="model-toggle">
-          <button
-            className={activeModel === 'plant' ? 'active' : ''}
-            onClick={() => setActiveModel('plant')}
-          >
-            Plant system
-          </button>
-          <button
-            className={activeModel === 'hv-room' ? 'active' : ''}
-            onClick={() => setActiveModel('hv-room')}
-          >
-            HV room
-          </button>
-        </div>
         <PlantScene
           productionKg={productionKg}
           currentA={currentAForViz}
-          running={isRunning}
+          running={isRunning && !localSim.exploded}
           h2Kg={h2Kg}
           activeModel={activeModel}
+          warningActive={localSim.warningActive}
+          exploded={localSim.exploded}
+          warningElapsed_s={localSim.warningElapsed_s}
           onCathodeClick={() => setReactionFocus('cathode')}
           onAnodeClick={() => setReactionFocus('anode')}
           onElectrolyteClick={() => setReactionFocus('electrolyte')}
         />
+        <canvas ref={explosionCanvasRef} className="explosion-overlay" />
         <div className="reaction-panel">
           <div className="reaction-header">
             {reactionFocus === 'cathode' && 'Cathode: sodium reduction'}
@@ -395,6 +502,97 @@ function App() {
           </div>
         </div>
       </div>
+
+      {showGraphModal && (
+        <div className="graph-modal-backdrop" onClick={() => setShowGraphModal(false)}>
+          <div
+            className="graph-modal"
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+          >
+            <div className="graph-modal-header">
+              <h2>Production graphs</h2>
+              <button onClick={() => setShowGraphModal(false)}>Close</button>
+            </div>
+            <div className="graph-modal-body">
+              <svg className="graph-svg">
+                <g transform="translate(40,10)">
+                  {(() => {
+                    const series = localSim.history;
+                    if (!series.length) return null;
+                    const t0 = series[0].t;
+                    const tLast = series[series.length - 1].t || t0 + 1;
+                    const width = 600;
+                    const height = 140;
+                    const naYs = series.map((p) => p.naKg);
+                    const minY = Math.min(...naYs, 0);
+                    const maxY = Math.max(...naYs, 1e-6);
+                    const path = series
+                      .map((p, i) => {
+                        const x = ((p.t - t0) / (tLast - t0 || 1)) * (width - 50);
+                        const normY = (p.naKg - minY) / (maxY - minY || 1);
+                        const y = height - 20 - normY * (height - 40);
+                        return `${i === 0 ? 'M' : 'L'}${x},${y}`;
+                      })
+                      .join(' ');
+                    return (
+                      <>
+                        <line x1={0} y1={height - 20} x2={width - 40} y2={height - 20} stroke="#4b5563" />
+                        <line x1={0} y1={0} x2={0} y2={height - 20} stroke="#4b5563" />
+                        <path d={path} stroke="#22c55e" strokeWidth={2} fill="none" />
+                        <text x={(width - 40) / 2} y={height - 4} fill="#9ca3af" fontSize={10}>
+                          Time (s)
+                        </text>
+                        <text x={-30} y={10} fill="#9ca3af" fontSize={10}>
+                          Na (kg)
+                        </text>
+                      </>
+                    );
+                  })()}
+                </g>
+              </svg>
+
+              <svg className="graph-svg">
+                <g transform="translate(40,10)">
+                  {(() => {
+                    const series = localSim.history;
+                    if (!series.length) return null;
+                    const t0 = series[0].t;
+                    const tLast = series[series.length - 1].t || t0 + 1;
+                    const width = 600;
+                    const height = 140;
+                    const h2Ys = series.map((p) => p.h2Kg);
+                    const minY = Math.min(...h2Ys, 0);
+                    const maxY = Math.max(...h2Ys, 1e-9);
+                    const path = series
+                      .map((p, i) => {
+                        const x = ((p.t - t0) / (tLast - t0 || 1)) * (width - 50);
+                        const normY = (p.h2Kg - minY) / (maxY - minY || 1);
+                        const y = height - 20 - normY * (height - 40);
+                        return `${i === 0 ? 'M' : 'L'}${x},${y}`;
+                      })
+                      .join(' ');
+                    return (
+                      <>
+                        <line x1={0} y1={height - 20} x2={width - 40} y2={height - 20} stroke="#4b5563" />
+                        <line x1={0} y1={0} x2={0} y2={height - 20} stroke="#4b5563" />
+                        <path d={path} stroke="#38bdf8" strokeWidth={2} fill="none" />
+                        <text x={(width - 40) / 2} y={height - 4} fill="#9ca3af" fontSize={10}>
+                          Time (s)
+                        </text>
+                        <text x={-30} y={10} fill="#9ca3af" fontSize={10}>
+                          H₂ (kg)
+                        </text>
+                      </>
+                    );
+                  })()}
+                </g>
+              </svg>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
