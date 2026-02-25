@@ -571,7 +571,7 @@ const CastnerCell: React.FC<{
           <cylinderGeometry args={[1.35, 1.35, 0.2, 40]} />
           <meshStandardMaterial color="#111827" metalness={0.6} roughness={0.6} />
         </mesh>
-        <Billboard position={[0, 2.8, 0]}>
+        <Billboard position={[0, 3.8, 0]}>
           <Text fontSize={0.3} color="#fef9c3" outlineWidth={0.02} outlineColor="#0f172a">
             Na treatment tank
           </Text>
@@ -641,13 +641,16 @@ const CastnerCell: React.FC<{
         <meshStandardMaterial color="#fbbf24" metalness={0.6} roughness={0.25} />
       </mesh>
 
-      {/* Pipe carrying molten sodium from the cell overflow to the treatment tank */}
+      {/* Pipe carrying molten sodium from the cell overflow to the Na treatment tank */}
       <TubePipe
         points={[
-          [1.3, 1.55, 0.6],
-          [2.4, 1.25, 1.1],
-          [3.4, 1.05, 1.6],
-          [4.4, 1.05, 2.0],
+          // vertical riser from overflow lip
+          [0.95, 1.68, 0.45],
+          [0.95, 3.0, 0.45],
+          // long horizontal run towards the Na treatment tank (diagonal in X/Z plane)
+          [4.4, 3.0, -4.0],
+          // vertical drop into the paraffin inside the tank
+          [4.4, 2.0, -4.0],
         ]}
         radius={0.08}
         color="#facc15"
