@@ -103,19 +103,14 @@ const GlbModelWithFallback: React.FC = () => (
   >
     {/* Gas purification skid with integrated control room */}
     <group>
-      {/* Dark plinth so the gas box visually sits on its own base */}
-      <mesh position={[6, 0.05, 2.5]}>
-        <boxGeometry args={[4.2, 0.2, 4.2]} />
-        <meshStandardMaterial color="#111827" metalness={0.7} roughness={0.5} />
-      </mesh>
       <GlbModel
         url={keuvModelUrl}
         position={[6.0, 0.0, 14.5]}
         rotation={[0, 0, 0]}
         scaleMultiplier={1.3}
       />
-      {/* Label above the tower, like the H2/O2 bottles, fully visible */}
-      <Billboard position={[6, 4.1, 0.6]}>
+      {/* Label positioned above the actual gas purification tower */}
+      <Billboard position={[6, 8.0, 14.5]}>
         <Text
           fontSize={0.38}
           color="#111827"
@@ -141,31 +136,6 @@ type PlantSceneProps = {
   onAnodeClick?: () => void;
   onElectrolyteClick?: () => void;
 };
-
-function polylinePointAt(points: THREE.Vector3[], u: number): THREE.Vector3 {
-  if (points.length === 0) return new THREE.Vector3();
-  if (points.length === 1) return points[0].clone();
-
-  const clamped = ((u % 1) + 1) % 1;
-  const segLens: number[] = [];
-  let total = 0;
-  for (let i = 0; i < points.length - 1; i++) {
-    const d = points[i].distanceTo(points[i + 1]);
-    segLens.push(d);
-    total += d;
-  }
-  const target = clamped * total;
-  let acc = 0;
-  for (let i = 0; i < segLens.length; i++) {
-    const next = acc + segLens[i];
-    if (target <= next || i === segLens.length - 1) {
-      const t = segLens[i] <= 1e-9 ? 0 : (target - acc) / segLens[i];
-      return points[i].clone().lerp(points[i + 1], t);
-    }
-    acc = next;
-  }
-  return points[points.length - 1].clone();
-}
 
 const TubePipe: React.FC<{
   points: [number, number, number][];
@@ -208,6 +178,10 @@ const GasFlowParticles: React.FC<{
   const meshRef = useRef<THREE.InstancedMesh | null>(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
   const pts = useMemo(() => points.map((p) => new THREE.Vector3(p[0], p[1], p[2])), [points]);
+  const curve = useMemo(
+    () => new THREE.CatmullRomCurve3(pts, false, 'centripetal'),
+    [pts],
+  );
 
   useFrame(({ clock }) => {
     if (!meshRef.current) return;
@@ -222,7 +196,7 @@ const GasFlowParticles: React.FC<{
     const t = clock.getElapsedTime();
     for (let i = 0; i < count; i++) {
       const u = (t * speed + i / count) % 1;
-      const p = polylinePointAt(pts, u);
+      const p = curve.getPointAt(u);
       dummy.position.copy(p);
       dummy.scale.set(size, size, size);
       dummy.updateMatrix();
@@ -250,25 +224,23 @@ const GasPipesAndFlow: React.FC<{ running: boolean; currentA: number }> = ({ run
   const o2BottleIn: [number, number, number] = [0.85, 3.75, 0.95];
   const h2BottleIn: [number, number, number] = [-0.85, 3.75, 0.95];
 
-  // Outlet from the H2 storage bottle (top of the green H2 tank), then down to floor level.
+  // Outlet from the H2 storage bottle (top of the green H2 tank).
   const h2TankOutTop: [number, number, number] = [-0.85, 4.0, 0.95];
-  const h2TankOutFloor: [number, number, number] = [-0.85, 0.8, 0.95];
 
-  // Connection from H2 tank outlet that immediately steps OUTSIDE the reactor area,
-  // then runs in mostly straight segments past the central control cabinets and
-  // finally into the gas purification/control skid on the right.
+  // Connection from H2 tank outlet that runs as a high, straight header
+  // following the perimeter path indicated by your arrow: first inboard,
+  // then along the long wall, then down and into the gas purifier.
   const purifierInlet: [number, number, number] = [6.4, 1.8, 14];
   const toPurifier: [number, number, number][] = [
     h2TankOutTop,
-    h2TankOutFloor,
-    // step outward, away from the electrolysis bath and coils
-    [-0.85, 0.8, 3.0],
-    // long, mostly straight run past the central control center
-    [3.5, 0.8, 3.0],
-    [6.0, 0.8, 3.0],
-    [6.0, 0.8, 10.0],
-    // short horizontal just in front of the purifier skid, then vertical up to the inlet
-    [purifierInlet[0], 0.8, purifierInlet[2]],
+    // step inward from the tank towards the inner wall
+    [-0.85, 4.0, 6.5],
+    // long straight run along the top of the wall in the arrow direction
+    [7.0, 4.0, 6.5],
+    // drop down near the purifier skid at the far corner
+    [7.0, 1.8, 14.0],
+    // short horizontal into the inlet
+    [purifierInlet[0], 1.8, purifierInlet[2]],
     purifierInlet,
   ];
 
