@@ -1,5 +1,6 @@
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
+import type { ThreeEvent } from '@react-three/fiber';
 import { Billboard, Html, OrbitControls, Text, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 
@@ -14,8 +15,14 @@ const GlbModel: React.FC<{
   /** World position of the model base (where it meets the floor). */
   position?: [number, number, number];
   rotation?: [number, number, number];
-}> = ({ url, position = [0, 0, 0], rotation = [0, 0, 0] }) => {
+  /** Optional multiplier to scale the auto-normalised model up/down. */
+  scaleMultiplier?: number;
+}> = ({ url, position = [0, 0, 0], rotation = [0, 0, 0], scaleMultiplier = 1 }) => {
   const { scene } = useGLTF(url);
+
+  const groupRef = useRef<THREE.Group | null>(null);
+  const [focusLevel, setFocusLevel] = useState(0);
+  const [detailActive, setDetailActive] = useState(false);
 
   const { cloned, scale, height } = useMemo(() => {
     const c = scene.clone();
@@ -29,9 +36,9 @@ const GlbModel: React.FC<{
     c.position.sub(center);
 
     const maxDim = Math.max(size.x, size.y, size.z, 1e-6);
-    const s = TARGET_SIZE / maxDim;
+    const s = (TARGET_SIZE * scaleMultiplier) / maxDim;
     return { cloned: c, scale: s, height: size.y };
-  }, [scene]);
+  }, [scene, scaleMultiplier]);
 
   useEffect(() => {
     cloned.traverse((child) => {
@@ -42,12 +49,39 @@ const GlbModel: React.FC<{
     });
   }, [cloned]);
 
+  // Smoothly enlarge / highlight the GLB when a numbered hotspot dot is clicked.
+  useFrame((_, delta) => {
+    if (!groupRef.current) return;
+    const target = detailActive ? 1 : 0;
+    setFocusLevel((prev) => {
+      const next = prev + (target - prev) * Math.min(1, delta * 4);
+      const sExtra = 1 + next * 0.35;
+      groupRef.current.scale.set(scale * sExtra, scale * sExtra, scale * sExtra);
+      return next;
+    });
+  });
+
+  const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
+    const name = (e.object as THREE.Object3D).name?.toLowerCase?.() ?? '';
+    // Treat meshes whose names suggest dots/markers as hotspots for detail view.
+    if (name.includes('dot') || name.includes('spot') || name.includes('marker')) {
+      e.stopPropagation();
+      setDetailActive((v) => !v);
+    }
+  };
+
   // Raise the centered model so its base sits on the global floor (y = 0).
   const [px, py, pz] = position;
   const yOffset = (height * scale) / 2;
 
   return (
-    <group position={[px, py + yOffset, pz]} rotation={rotation} scale={[scale, scale, scale]}>
+    <group
+      ref={groupRef}
+      position={[px, py + yOffset, pz]}
+      rotation={rotation}
+      scale={[scale, scale, scale]}
+      onPointerDown={handlePointerDown}
+    >
       <primitive object={cloned} />
     </group>
   );
@@ -802,6 +836,44 @@ const Floor: React.FC = () => (
   </mesh>
 );
 
+const HighVoltageRoom: React.FC = () => (
+  <group>
+    {/* Integrated 10 kV high-voltage power distribution room placed away from the main cell */}
+    <GlbModel
+      url="/models/10kv_high-voltage_power_distribution_room.glb"
+      position={[8, 0, -4]}
+      rotation={[0, Math.PI / 2, 0]}
+      scaleMultiplier={2.2}
+    />
+  </group>
+);
+
+const InstrumentCluster: React.FC = () => (
+  <group>
+    {/* Physical ammeter near the transformer/rectifier feed */}
+    <GlbModel
+      url="/models/ammeter.glb"
+      position={[-3.2, 0.75, -1.2]}
+      rotation={[0, Math.PI / 5, 0]}
+      scaleMultiplier={1.1}
+    />
+    {/* Analog voltmeter on the front bench */}
+    <GlbModel
+      url="/models/voltmeter-freepoly.org.glb"
+      position={[-2.7, 0.65, 1.4]}
+      rotation={[0, -Math.PI / 6, 0]}
+      scaleMultiplier={1.2}
+    />
+    {/* Digital multimeter closer to the cell */}
+    <GlbModel
+      url="/models/digital_multimeter.glb"
+      position={[-1.9, 0.65, 0.4]}
+      rotation={[0, -Math.PI / 4, 0]}
+      scaleMultiplier={1.1}
+    />
+  </group>
+);
+
 const H2TankMotion: React.FC<{ h2Kg: number }> = ({ h2Kg }) => {
   const meshRef = useRef<THREE.InstancedMesh | null>(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
@@ -863,6 +935,7 @@ export const PlantScene: React.FC<PlantSceneProps> = ({
       <ambientLight intensity={0.45} />
       <directionalLight position={[5, 10, 6]} intensity={1.3} />
       <Floor />
+      <HighVoltageRoom />
       <GlbModelWithFallback />
       <CastnerCell
         productionKg={productionKg}
@@ -874,8 +947,7 @@ export const PlantScene: React.FC<PlantSceneProps> = ({
       />
       <GasCollectors h2Kg={h2Kg} />
       <GasPipesAndFlow running={running} currentA={currentA} />
-      <Transformer />
-      <WiringAndMeter />
+      <InstrumentCluster />
       <OrbitControls enableDamping />
     </Canvas>
   );
