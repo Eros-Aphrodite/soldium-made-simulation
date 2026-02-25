@@ -99,9 +99,14 @@ const GlbModelWithFallback: React.FC = () => (
       </mesh>
     }
   >
-    {/* Wall panel: sit on floor, face the viewer like the reference render */}
+    {/* Gas purification skid with integrated control room */}
     <group>
-      <GlbModel url={keuvModelUrl} position={[4, 0, 0]} rotation={[0, -Math.PI / 2, 0]} />
+      <GlbModel
+        url={keuvModelUrl}
+        position={[4, 0, 0]}
+        rotation={[0, -Math.PI / 2, 0]}
+        scaleMultiplier={0.7}
+      />
       {/* Label above the tower, like the H2/O2 bottles, fully visible */}
       <Billboard position={[4, 4.1, 0.6]}>
         <Text
@@ -832,7 +837,8 @@ const GasCollectors: React.FC<{ h2Kg: number }> = ({ h2Kg }) => (
 
 const Floor: React.FC = () => (
   <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
-    <planeGeometry args={[18, 18]} />
+    {/* Enlarged base pad so the integrated cockpit + gas purifier + control room sit fully on grey background */}
+    <planeGeometry args={[30, 30]} />
     <meshStandardMaterial color="#9ca3af" roughness={0.7} metalness={0.0} />
   </mesh>
 );
@@ -851,19 +857,19 @@ const HighVoltageRoom: React.FC = () => (
 
 const InstrumentCluster: React.FC = () => (
   <group>
-    {/* Physical ammeter – current switch, left side of cockpit */}
+    {/* Physical ammeter – current control, mounted on left console inside purifier control room */}
     <GlbModel
       url="/models/ammeter.glb"
-      position={[-1.8, 0.0, 2.1]}
-      rotation={[0, Math.PI / 10, 0]}
-      scaleMultiplier={0.55}
+      position={[3.1, 0.15, 0.9]}
+      rotation={[0, Math.PI / 3, 0]}
+      scaleMultiplier={0.35}
     />
-    {/* Digital multimeter – voltage switch, right side of cockpit, clearly separated */}
+    {/* Digital multimeter – voltage control, mounted on right console, clearly separated */}
     <GlbModel
       url="/models/digital_multimeter.glb"
-      position={[1.8, 0.0, 2.5]}
-      rotation={[0, -Math.PI / 6, 0]}
-      scaleMultiplier={0.55}
+      position={[4.7, 0.15, 0.9]}
+      rotation={[0, -Math.PI / 3, 0]}
+      scaleMultiplier={0.35}
     />
   </group>
 );
