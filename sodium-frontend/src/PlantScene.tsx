@@ -68,9 +68,10 @@ const GlbModelWithFallback: React.FC = () => (
     {/* Wall panel: sit on floor, face the viewer like the reference render */}
     <group>
       <GlbModel url={keuvModelUrl} position={[4, 0, 0]} rotation={[0, -Math.PI / 2, 0]} />
-      <Billboard position={[4, 3.2, 0.3]}>
+      {/* Label above the tower, like the H2/O2 bottles, fully visible */}
+      <Billboard position={[4, 4.1, 0.6]}>
         <Text
-          fontSize={0.45}
+          fontSize={0.38}
           color="#111827"
           outlineWidth={0.03}
           outlineColor="#e5e7eb"
@@ -196,20 +197,16 @@ const GasPipesAndFlow: React.FC<{ running: boolean; currentA: number }> = ({ run
   const currentScaled = Math.min(Math.abs(currentA) / 10_000, 2.0);
   const baseSpeed = 0.22 + currentScaled * 0.18;
 
-  // Short vertical risers from lid -> bottles on top plate,
-  // plus a clean header to the external Gas Purifier tower on the right.
+  // Short vertical risers from lid -> bottles on top plate.
   const lidO2Out: [number, number, number] = [0.55, 2.95, 0.65];
   const lidH2Out: [number, number, number] = [-0.55, 2.95, 0.65];
   const o2BottleIn: [number, number, number] = [0.85, 3.35, 0.95];
   const h2BottleIn: [number, number, number] = [-0.85, 3.35, 0.95];
 
   const header: [number, number, number] = [1.55, 2.85, 0.2];
-  // Entry point into the side wall of the Gas Purifier tower (front face)
-  const purifierIn: [number, number, number] = [4.0, 2.0, 0.3];
 
   const toO2: [number, number, number][] = [lidO2Out, [0.7, 3.1, 0.9], o2BottleIn];
   const toH2: [number, number, number][] = [lidH2Out, [-0.7, 3.1, 0.9], h2BottleIn];
-  const toPurifier: [number, number, number][] = [header, [2.7, 2.8, 0.25], purifierIn];
 
   return (
     <group>
@@ -230,19 +227,11 @@ const GasPipesAndFlow: React.FC<{ running: boolean; currentA: number }> = ({ run
         emissiveIntensity={running ? 0.35 : 0.0}
         opacity={0.92}
       />
-      <TubePipe
-        points={toPurifier}
-        radius={0.06}
-        color="#cbd5e1"
-        emissive="#e5e7eb"
-        emissiveIntensity={running ? 0.15 : 0.0}
-        opacity={0.75}
-      />
 
       {/* Flow particles (clearly show gas moving) */}
       <GasFlowParticles points={toO2} count={55} color="#bfdbfe" speed={baseSpeed * 1.35} running={running} size={0.06} />
       <GasFlowParticles points={toH2} count={55} color="#bbf7d0" speed={baseSpeed * 1.35} running={running} size={0.06} />
-      <GasFlowParticles points={toPurifier} count={70} color="#e5e7eb" speed={baseSpeed * 1.05} running={running} size={0.05} />
+      {/* No visual connection to the external Gas Purifier tower */}
 
       {/* Lid ports + header junction */}
       <mesh position={lidO2Out}>
@@ -336,7 +325,7 @@ const CastnerCell: React.FC<{
   onCathodeClick?: () => void;
   onAnodeClick?: () => void;
   onElectrolyteClick?: () => void;
-}> = ({ productionKg: _productionKg, currentA, running, onCathodeClick, onAnodeClick, onElectrolyteClick }) => {
+}> = ({ productionKg, currentA, running, onCathodeClick, onAnodeClick, onElectrolyteClick }) => {
   // Activity is driven by current and only when simulation is running
   const currentScaled = Math.min(Math.abs(currentA) / 10_000, 2.0);
   const activity = running ? Math.min(currentScaled, 1.0) : 0; // 0–1 activity metric
@@ -366,34 +355,32 @@ const CastnerCell: React.FC<{
 
   return (
     <group position={[0, 0, 0]}>
-      {/* Rectangular steel furnace housing (matches drawing style) */}
+      {/* Rectangular furnace housing – now semi‑transparent so the reaction is visible */}
       <group>
         {/* main body */}
         <mesh position={[0, 1.45, 0]}>
           <boxGeometry args={[3.4, 2.9, 2.8]} />
-          <meshStandardMaterial color="#374151" metalness={0.75} roughness={0.35} />
+          <meshPhysicalMaterial
+            color="#4b5563"
+            transparent
+            opacity={0.32}
+            roughness={0.25}
+            metalness={0.2}
+            clearcoat={0.6}
+            clearcoatRoughness={0.25}
+          />
         </mesh>
         {/* top plate */}
         <mesh position={[0, 2.95, 0]}>
           <boxGeometry args={[3.7, 0.25, 3.05]} />
-          <meshStandardMaterial color="#4b5563" metalness={0.8} roughness={0.3} />
-        </mesh>
-        {/* front window frame */}
-        <mesh position={[0, 1.45, 1.41]}>
-          <boxGeometry args={[2.6, 1.6, 0.08]} />
-          <meshStandardMaterial color="#111827" metalness={0.6} roughness={0.45} />
-        </mesh>
-        {/* glass window (slightly inset) */}
-        <mesh position={[0, 1.45, 1.37]}>
-          <planeGeometry args={[2.3, 1.35]} />
           <meshPhysicalMaterial
-            color="#93c5fd"
+            color="#6b7280"
             transparent
-            opacity={0.18}
-            roughness={0.05}
-            metalness={0.0}
-            clearcoat={0.9}
-            clearcoatRoughness={0.1}
+            opacity={0.4}
+            roughness={0.3}
+            metalness={0.3}
+            clearcoat={0.7}
+            clearcoatRoughness={0.25}
           />
         </mesh>
         {/* base plinth */}
@@ -639,28 +626,6 @@ const CastnerCell: React.FC<{
         <meshStandardMaterial color="#6b7280" metalness={0.7} roughness={0.4} />
       </mesh>
 
-      {/* Sodium outlet channel and collection pot (front) */}
-      <group position={[0, 0, 1.4]}>
-        {/* short vertical throat */}
-        <mesh position={[0, 0.2, -0.15]} rotation={[Math.PI / 2, 0, 0]}>
-          <cylinderGeometry args={[0.18, 0.18, 0.6, 24]} />
-          <meshStandardMaterial color="#fbbf24" metalness={0.7} roughness={0.3} />
-        </mesh>
-        {/* horizontal channel */}
-        <mesh position={[0, -0.1, 0.25]} rotation={[0, 0, 0]}>
-          <boxGeometry args={[0.6, 0.18, 0.5]} />
-          <meshStandardMaterial color="#facc15" metalness={0.7} roughness={0.35} />
-        </mesh>
-        {/* collection pot */}
-        <mesh position={[0, -0.55, 0.45]}>
-          <cylinderGeometry args={[0.6, 0.6, 0.25, 48]} />
-          <meshStandardMaterial color="#374151" metalness={0.65} roughness={0.4} />
-        </mesh>
-        <mesh position={[0, -0.6, 0.45]}>
-          <cylinderGeometry args={[0.52, 0.52, 0.05, 48]} />
-          <meshStandardMaterial color="#facc15" metalness={0.7} roughness={0.25} />
-        </mesh>
-      </group>
     </group>
   );
 };
