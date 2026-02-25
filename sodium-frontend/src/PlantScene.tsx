@@ -103,9 +103,9 @@ const GlbModelWithFallback: React.FC = () => (
     <group>
       <GlbModel
         url={keuvModelUrl}
-        position={[4, 0, 0]}
-        rotation={[0, -Math.PI / 2, 0]}
-        scaleMultiplier={0.7}
+        position={[0, 0.1, 2.5]}
+        rotation={[0, 0, 0]}
+        scaleMultiplier={0.9}
       />
       {/* Label above the tower, like the H2/O2 bottles, fully visible */}
       <Billboard position={[4, 4.1, 0.6]}>
@@ -129,7 +129,7 @@ type PlantSceneProps = {
   currentA: number;
   running: boolean;
   h2Kg: number;
-  activeModel: 'plant' | 'hv-room' | 'ammeter' | 'voltmeter' | 'multimeter';
+  activeModel: 'plant' | 'hv-room';
   onCathodeClick?: () => void;
   onAnodeClick?: () => void;
   onElectrolyteClick?: () => void;
@@ -226,7 +226,7 @@ const GasFlowParticles: React.FC<{
 
   return (
     <instancedMesh ref={meshRef} args={[undefined as any, undefined as any, count]}>
-      <sphereGeometry args={[1, 10, 10]} />
+      <sphereGeometry args={[0, 10, 10]} />
       <meshStandardMaterial color={color} transparent opacity={0.0} />
     </instancedMesh>
   );
@@ -240,19 +240,19 @@ const GasPipesAndFlow: React.FC<{ running: boolean; currentA: number }> = ({ run
   // Short vertical risers from lid -> bottles on top plate.
   const lidO2Out: [number, number, number] = [0.55, 2.95, 0.65];
   const lidH2Out: [number, number, number] = [-0.55, 2.95, 0.65];
-  const o2BottleIn: [number, number, number] = [0.85, 3.35, 0.95];
-  const h2BottleIn: [number, number, number] = [-0.85, 3.35, 0.95];
+  const o2BottleIn: [number, number, number] = [0.85, 3.75, 0.95];
+  const h2BottleIn: [number, number, number] = [-0.85, 3.75, 0.95];
 
   // Header where gases are collected before purification.
-  const header: [number, number, number] = [1.55, 2.85, 0.2];
+  const header: [number, number, number] = [3.55, 2.85, 0.2];
 
   // Connection from header over to the external Gas Purifier tower
-  // mounted at approximately x ≈ 4 in world space.
-  const purifierInlet: [number, number, number] = [3.4, 2.7, 0.2];
+  // mounted near (0, 0, 2.5) in world space.
+  const purifierInlet: [number, number, number] = [0.0, 2.7, 2.5];
   const toPurifier: [number, number, number][] = [
     header,
-    [2.4, 2.9, 0.2],
-    [3.0, 2.9, 0.2],
+    [1.4, 2.9, 1.0],
+    [0.7, 2.9, 1.8],
     purifierInlet,
   ];
 
@@ -400,6 +400,68 @@ const BubbleColumn: React.FC<{
   );
 };
 
+const HelicalCoolingCoil: React.FC<{ offsetZ?: number }> = ({ offsetZ = 0 }) => {
+  const curve = useMemo(() => {
+    const points: THREE.Vector3[] = [];
+    const turns = 6;
+    const height = 1.6;
+    const radius = 0.55;
+    const segments = 160;
+
+    for (let i = 0; i <= segments; i++) {
+      const t = (i / segments) * Math.PI * 2 * turns;
+      const y = (height * i) / segments - height / 2;
+      const x = radius * Math.cos(t);
+      const z = radius * Math.sin(t);
+      points.push(new THREE.Vector3(x, y, z));
+    }
+
+    return new THREE.CatmullRomCurve3(points, false, 'centripetal');
+  }, []);
+
+  const geom = useMemo(() => new THREE.TubeGeometry(curve, 320, 0.06, 20, false), [curve]);
+
+  return (
+    <group position={[0, 0, offsetZ]}>
+      <mesh geometry={geom}>
+        <meshStandardMaterial color="#9ca3af" metalness={0.85} roughness={0.25} />
+      </mesh>
+    </group>
+  );
+};
+
+const CoolingCoilAssembly: React.FC = () => {
+  const spacing = 0.5;
+  const height = 1.6;
+  const connectorCount = 6;
+  const connectorRadius = 0.04;
+
+  const connectors = useMemo(
+    () =>
+      Array.from({ length: connectorCount }).map((_, i) => {
+        const t = i / (connectorCount - 1 || 1);
+        return height * t - height / 2;
+      }),
+    [connectorCount, height],
+  );
+
+  return (
+    <group>
+      {/* Left and right springs */}
+      <HelicalCoolingCoil offsetZ={-spacing / 2} />
+      <HelicalCoolingCoil offsetZ={spacing / 2} />
+
+      {/* Connecting rods between the two springs */}
+      {connectors.map((y, idx) => (
+        <mesh key={idx} position={[0, y, 0]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[connectorRadius, connectorRadius, spacing, 12]} />
+          <meshStandardMaterial color="#9ca3af" metalness={0.85} roughness={0.25} />
+        </mesh>
+      ))}
+    </group>
+  );
+};
+
 const CastnerCell: React.FC<{
   productionKg: number;
   currentA: number;
@@ -416,6 +478,8 @@ const CastnerCell: React.FC<{
   const MAX_BATCH_NA_KG = 10;
   const depletion = Math.min(productionKg / MAX_BATCH_NA_KG, 1.0);
   const electrolyteFill = 1 - depletion * 0.75; // never fully empty visually
+   // Y position of the top surface of the molten bath (used for a domed meniscus cap).
+  const electrolyteTopY = 0.95 + (1.35 * electrolyteFill) / 2;
 
   const [cathodePulse, setCathodePulse] = useState(0);
   const [anodePulse, setAnodePulse] = useState(0);
@@ -515,27 +579,50 @@ const CastnerCell: React.FC<{
         />
       </mesh>
 
+      {/* Slightly domed meniscus on top of the molten bath so the side view is not a perfectly flat line */}
+      <mesh position={[0, electrolyteTopY, 0]} scale={[1.02, 0.22, 1.02]}>
+        <sphereGeometry args={[1, 32, 24]} />
+        <meshPhysicalMaterial
+          color={electrolyteColor}
+          transparent
+          opacity={0.45}
+          roughness={0.25}
+          metalness={0.1}
+          clearcoat={0.85}
+          clearcoatRoughness={0.25}
+        />
+      </mesh>
+
       {/* Sodium overflow lip */}
       <mesh position={[0, 1.68, 0]}>
         <torusGeometry args={[1.07, 0.07, 16, 64]} />
         <meshStandardMaterial color="#fbbf24" metalness={0.6} roughness={0.25} />
       </mesh>
 
-      {/* Right-side cooling coil (stylised, like drawing) */}
-      <group position={[1.85, 1.1, 0.0]} rotation={[0, 0, 0]}>
-        {Array.from({ length: 7 }).map((_, i) => (
-          <mesh key={i} position={[0, i * 0.22, 0]}>
-            <torusGeometry args={[0.55, 0.06, 16, 48]} />
-            <meshStandardMaterial color="#9ca3af" metalness={0.8} roughness={0.25} />
-          </mesh>
-        ))}
+      {/* Right-side cooling coil – twin springs with cross-connectors (as per sketch) */}
+      <group position={[1.85, 1.0, 0]} rotation={[0, 0, 0]}>
+        <CoolingCoilAssembly />
         {/* inlet/outlet stubs */}
-        <mesh position={[-0.62, 0.66, -0.25]} rotation={[0, 0, Math.PI / 2]}>
-          <cylinderGeometry args={[0.06, 0.06, 0.6, 16]} />
+        <mesh position={[-0.9, 0.75, -0.45]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.06, 0.06, 0.9, 16]} />
           <meshStandardMaterial color="#9ca3af" metalness={0.8} roughness={0.25} />
         </mesh>
-        <mesh position={[0.62, 0.22, -0.25]} rotation={[0, 0, Math.PI / 2]}>
-          <cylinderGeometry args={[0.06, 0.06, 0.6, 16]} />
+        <mesh position={[0.9, -0.15, -0.45]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.06, 0.06, 0.9, 16]} />
+          <meshStandardMaterial color="#9ca3af" metalness={0.8} roughness={0.25} />
+        </mesh>
+      </group>
+
+      {/* Left-side cooling coil – mirrored twin springs assembly */}
+      <group position={[-1.85, 1.0, 0]} rotation={[0, Math.PI, 0]}>
+        <CoolingCoilAssembly />
+        {/* inlet/outlet stubs */}
+        <mesh position={[-0.9, 0.75, -0.45]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.06, 0.06, 0.9, 16]} />
+          <meshStandardMaterial color="#9ca3af" metalness={0.8} roughness={0.25} />
+        </mesh>
+        <mesh position={[0.9, -0.15, -0.45]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.06, 0.06, 0.9, 16]} />
           <meshStandardMaterial color="#9ca3af" metalness={0.8} roughness={0.25} />
         </mesh>
       </group>
@@ -845,31 +932,12 @@ const Floor: React.FC = () => (
 
 const HighVoltageRoom: React.FC = () => (
   <group>
-    {/* Integrated 10 kV high-voltage power distribution room placed away from the main cell */}
+    {/* Integrated 10 kV high-voltage power distribution room occupying ~40% of the grey pad */}
     <GlbModel
       url="/models/10kv_high-voltage_power_distribution_room.glb"
-      position={[8, 0, -4]}
+      position={[0, 0, 9]}
       rotation={[0, Math.PI / 2, 0]}
-      scaleMultiplier={2.2}
-    />
-  </group>
-);
-
-const InstrumentCluster: React.FC = () => (
-  <group>
-    {/* Physical ammeter – current control, mounted on left console inside purifier control room */}
-    <GlbModel
-      url="/models/ammeter.glb"
-      position={[3.1, 0.15, 0.9]}
-      rotation={[0, Math.PI / 3, 0]}
-      scaleMultiplier={0.35}
-    />
-    {/* Digital multimeter – voltage control, mounted on right console, clearly separated */}
-    <GlbModel
-      url="/models/digital_multimeter.glb"
-      position={[4.7, 0.15, 0.9]}
-      rotation={[0, -Math.PI / 3, 0]}
-      scaleMultiplier={0.35}
+      scaleMultiplier={3.0}
     />
   </group>
 );
@@ -951,38 +1019,12 @@ export const PlantScene: React.FC<PlantSceneProps> = ({
           {/* Gas handling: bottles on top of the cell and external purifier to the right */}
           <GasCollectors h2Kg={h2Kg} />
           <GasPipesAndFlow running={running} currentA={currentA} />
+          {/* Gas purification tower and enlarged control room on the grey pad */}
           <GlbModelWithFallback />
-          {/* Electrical supply / instruments to the left */}
-          <InstrumentCluster />
-          {/* High-voltage room shell set far to the back-right */}
           <HighVoltageRoom />
         </>
       )}
       {activeModel === 'hv-room' && <HighVoltageRoom />}
-      {activeModel === 'ammeter' && (
-        <GlbModel
-          url="/models/ammeter.glb"
-          position={[0, 0, 0]}
-          rotation={[0, Math.PI / 10, 0]}
-          scaleMultiplier={1.3}
-        />
-      )}
-      {activeModel === 'voltmeter' && (
-        <GlbModel
-          url="/models/voltmeter-freepoly.org.glb"
-          position={[0, 0, 0]}
-          rotation={[0, -Math.PI / 12, 0]}
-          scaleMultiplier={1.3}
-        />
-      )}
-      {activeModel === 'multimeter' && (
-        <GlbModel
-          url="/models/digital_multimeter.glb"
-          position={[0, 0, 0]}
-          rotation={[0, -Math.PI / 8, 0]}
-          scaleMultiplier={1.3}
-        />
-      )}
       <OrbitControls enableDamping />
     </Canvas>
   );

@@ -27,9 +27,7 @@ function App() {
   const [reactionFocus, setReactionFocus] = useState<'none' | 'cathode' | 'anode' | 'electrolyte'>(
     'none',
   );
-  const [activeModel, setActiveModel] = useState<
-    'plant' | 'hv-room' | 'ammeter' | 'voltmeter' | 'multimeter'
-  >('plant');
+  const [activeModel, setActiveModel] = useState<'plant' | 'hv-room'>('plant');
 
   async function fetchState() {
     try {
@@ -251,24 +249,6 @@ function App() {
             onClick={() => setActiveModel('hv-room')}
           >
             HV room
-          </button>
-          <button
-            className={activeModel === 'ammeter' ? 'active' : ''}
-            onClick={() => setActiveModel('ammeter')}
-          >
-            Ammeter
-          </button>
-          <button
-            className={activeModel === 'voltmeter' ? 'active' : ''}
-            onClick={() => setActiveModel('voltmeter')}
-          >
-            Voltmeter
-          </button>
-          <button
-            className={activeModel === 'multimeter' ? 'active' : ''}
-            onClick={() => setActiveModel('multimeter')}
-          >
-            Digital multimeter
           </button>
         </div>
         <PlantScene
