@@ -4,6 +4,15 @@ A 3D, interactive sodium plant electrolysis simulator built with **React**, **Ty
 
 It visualizes an industrial electrolysis cell, gas handling, NaOH / Na treatment, and failure modes (warnings and explosions) for educational and demonstration purposes.
 
+## Screenshots
+
+> Save your screenshots into `sodium-frontend/docs` (or similar) with the matching filenames so they render correctly on GitHub and Vercel.
+
+![Plant overview](docs/simulation-overview-1.png)
+![Anode reaction view](docs/simulation-anode-2.png)
+![Electrolyte ion motion – side view](docs/simulation-electrolyte-3.png)
+![Electrolyte ion motion – top view](docs/simulation-electrolyte-4.png)
+
 ## Getting Started
 
 ```bash
