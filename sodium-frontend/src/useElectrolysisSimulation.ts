@@ -103,26 +103,20 @@ export function useElectrolysisSimulation({
         const overCurrent = Math.abs(currentA) > 50_000;
         const endOfLife = newHealth <= 0.05;
 
-        let warningReason: FailureReason = prev.warningReason;
-        let warningActive = prev.warningActive;
-        let exploded = prev.exploded;
-        let warningElapsed_s = prev.warningElapsed_s;
+        // Derive next warning / explosion state in a more type-explicit way
+        const baseWarningReason: FailureReason = prev.warningReason;
+        const shouldTriggerWarning = !prev.exploded && (overCurrent || endOfLife);
 
-        if (!exploded && (overCurrent || endOfLife)) {
-          warningActive = true;
-          if (!warningReason) {
-            warningReason = overCurrent ? 'overCurrent' : 'endOfLife';
-          }
-        }
+        const warningActive: boolean = prev.warningActive || shouldTriggerWarning;
+        const warningReason: FailureReason =
+          shouldTriggerWarning && !baseWarningReason
+            ? overCurrent
+              ? 'overCurrent'
+              : 'endOfLife'
+            : baseWarningReason;
 
-        if (warningActive) {
-          warningElapsed_s += dt;
-          if (warningElapsed_s >= 10) {
-            exploded = true;
-          }
-        } else {
-          warningElapsed_s = 0;
-        }
+        let warningElapsed_s = warningActive ? prev.warningElapsed_s + dt : 0;
+        let exploded = prev.exploded || (warningActive && warningElapsed_s >= 10);
 
         // Effective current for production (reduced when warning or damaged)
         let effectiveCurrent = currentA * newHealth;

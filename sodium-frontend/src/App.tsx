@@ -15,21 +15,21 @@ type SimulationState = {
   dt_hours: number;
 };
 
-const API_BASE = 'http://127.0.0.1:8000';
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 
 function App() {
-  const [sim, setSim] = useState<SimulationState | null>(null);
+  const [, setSim] = useState<SimulationState | null>(null);
   const [currentAInput, setCurrentAInput] = useState('4.0'); // now used as voltage input (V)
   const [dtInput, setDtInput] = useState('1');
   const [naohMassInput, setNaohMassInput] = useState('10'); // kg
   const [powerKWInput, setPowerKWInput] = useState('0'); // optional power target
-  const [estimatedHours, setEstimatedHours] = useState<string | null>(null);
+  const [, setEstimatedHours] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [status, setStatus] = useState<string>('');
   const [reactionFocus, setReactionFocus] = useState<'none' | 'cathode' | 'anode' | 'electrolyte'>(
     'none',
   );
-  const [activeModel, setActiveModel] = useState<'plant' | 'hv-room'>('plant');
+  const [activeModel] = useState<'plant' | 'hv-room'>('plant');
   const [showGraphModal, setShowGraphModal] = useState(false);
   const explosionCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const explosionTriggerRef = useRef<((pos: { x: number; y: number }) => void) | null>(null);
