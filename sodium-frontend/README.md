@@ -1,3 +1,27 @@
+# Sodium Plant Electrolysis Simulator
+
+A 3D, interactive sodium plant electrolysis simulator built with **React**, **TypeScript**, and **Three.js** via **@react-three/fiber** and **@react-three/drei**.
+
+It visualizes an industrial electrolysis cell, gas handling, NaOH / Na treatment, and failure modes (warnings and explosions) for educational and demonstration purposes.
+
+## Getting Started
+
+```bash
+cd sodium-frontend
+npm install
+npm run dev
+```
+
+Open the URL shown in the terminal (for example `http://localhost:5173`) to use the simulator.
+
+## License and Usage
+
+This project is intended as a teaching / demonstration tool and is **not** a real‑world safety system.
+
+> This project was created for educational purposes and any copyright infringement is strictly prohibited.
+
+---
+
 # React + TypeScript + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
