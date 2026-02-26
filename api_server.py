@@ -58,6 +58,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.get("/")
+def root() -> Dict[str, Any]:
+    """Simple root endpoint so platform health checks don't 502 on '/'."""
+    return {"status": "ok", "service": "sodium-plant-api"}
+
+
+@app.get("/health")
+def health() -> Dict[str, Any]:
+    """Lightweight healthcheck endpoint."""
+    return {"status": "ok"}
+
 _plant: Optional[SodiumPlant] = None
 _current_a: float = 10_000.0
 _dt_hours: float = 1.0
