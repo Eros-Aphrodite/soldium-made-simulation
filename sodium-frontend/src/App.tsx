@@ -126,32 +126,6 @@ function App() {
     }
   }
 
-  async function handleEstimateTime() {
-    try {
-      const currentA = parseFloat(currentAInput) || 0;
-      const purity = Math.min(Math.max(parseFloat(naohPurityInput) || 0, 0), 100) / 100;
-      const naohMass = (parseFloat(naohMassInput) || 0) * purity;
-      if (currentA <= 0 || naohMass <= 0) {
-        setStatus('Enter positive current and NaOH mass.');
-        return;
-      }
-      const res = await fetch(`${API_BASE}/api/reaction_time`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          current_a: currentA,
-          naoh_mass_kg: naohMass,
-          efficiency: 0.9,
-        }),
-      });
-      if (!res.ok) throw new Error('time error');
-      await res.json();
-      setStatus('');
-    } catch (err) {
-      setStatus('Time estimate failed. Check backend console.');
-    }
-  }
-
   useEffect(() => {
     fetchState();
   }, []);
@@ -1066,7 +1040,6 @@ function App() {
                     const tLast = series[series.length - 1].t || t0 + 1;
                     const width = 600;
                     const height = 140;
-                    const healths = series.map((p) => p.electrodeHealth * 100);
                     const minY = 0;
                     const maxY = 100;
                     const path = series
