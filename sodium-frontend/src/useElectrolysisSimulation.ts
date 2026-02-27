@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 type FailureReason = 'overCurrent' | 'endOfLife' | null;
 
-type HistoryPoint = {
+export type HistoryPoint = {
   t: number; // seconds
   naKg: number;
   h2Kg: number;
@@ -10,6 +10,8 @@ type HistoryPoint = {
   powerW: number;
   resistanceOhm: number;
   electrodeHealth: number;
+  warningActive?: boolean;
+  cellTempC: number;
 };
 
 type SimState = {
@@ -26,6 +28,7 @@ type SimState = {
   exploded: boolean;
   warningElapsed_s: number;
   history: HistoryPoint[];
+  cellTempC: number;
 };
 
 export type ElectrolysisParams = {
@@ -65,6 +68,7 @@ export function useElectrolysisSimulation({
     exploded: false,
     warningElapsed_s: 0,
     history: [],
+    cellTempC: 40,
   }));
 
   // Re-initialise NaOH when feed changes substantially
@@ -85,11 +89,21 @@ export function useElectrolysisSimulation({
 
         const time_s = prev.time_s + dt;
 
-        // Resistance model: base + effects of depletion and electrode wear
+        // Simple thermal model: Joule heating vs cooling to ambient
+        const ambientC = 40;
+        const prevTempC = prev.cellTempC ?? ambientC;
+        const heatingCoeff = 2e-6; // °C per (W·s)
+        const coolingCoeff = 0.01; // per second
+        const dT_heating = prev.powerW * heatingCoeff * dt;
+        const dT_cooling = coolingCoeff * (ambientC - prevTempC) * dt;
+        const cellTempC = Math.max(ambientC, prevTempC + dT_heating + dT_cooling);
+
+        // Resistance model: base + effects of depletion, electrode wear, and Joule heating
         const R0 = 1e-4; // base Ohms
         const depletion = 1 - Math.min(Math.max(prev.naohRemainingKg / 500, 0), 1);
         const wear = 1 - prev.electrodeHealth;
-        const resistanceOhm = R0 * (1 + 2.0 * depletion + 3.0 * wear);
+        const tempFactor = 1 + 0.004 * Math.max(0, cellTempC - ambientC); // metal-like R(T)
+        const resistanceOhm = R0 * tempFactor * (1 + 2.0 * depletion + 3.0 * wear);
 
         let voltage = Math.max(voltageV, 0);
         if (mode === 'power' && targetPowerKW > 0 && resistanceOhm > 0) {
@@ -99,10 +113,11 @@ export function useElectrolysisSimulation({
         const currentA = voltage > 0 && resistanceOhm > 0 ? voltage / resistanceOhm : 0;
         const powerW = voltage * currentA;
 
-        // Coulomb count for electrode life
+        // Coulomb count for electrode life (accelerated at high temperature)
         const Q_design = 50_000 * 3600 * 10; // 10 h at 50 kA nominal
         const dQ = Math.abs(currentA) * dt;
-        const newHealth = Math.max(0, prev.electrodeHealth - dQ / Q_design);
+        const tempStress = 1 + Math.max(0, (cellTempC - ambientC) / 80);
+        const newHealth = Math.max(0, prev.electrodeHealth - (dQ * tempStress) / Q_design);
 
         const overCurrent = Math.abs(currentA) > 50_000;
         const endOfLife = newHealth <= 0.05;
@@ -162,6 +177,8 @@ export function useElectrolysisSimulation({
             powerW,
             resistanceOhm,
             electrodeHealth: newHealth,
+            warningActive,
+            cellTempC,
           },
         ].slice(-400);
 
@@ -179,6 +196,7 @@ export function useElectrolysisSimulation({
           exploded,
           warningElapsed_s,
           history,
+          cellTempC,
         };
       });
     }, dt * 1000);

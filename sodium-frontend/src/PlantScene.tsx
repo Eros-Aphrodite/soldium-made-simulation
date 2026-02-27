@@ -1047,17 +1047,6 @@ export const PlantScene: React.FC<PlantSceneProps> = ({
   onAnodeClick,
   onElectrolyteClick,
 }) => {
-  const [gasExploded, setGasExploded] = useState(false);
-
-  useEffect(() => {
-    if (!exploded) {
-      setGasExploded(false);
-      return;
-    }
-    const id = setTimeout(() => setGasExploded(true), 1000);
-    return () => clearTimeout(id);
-  }, [exploded]);
-
   return (
     <Canvas camera={{ position: [6, 5, 8], fov: 45 }}>
       <color attach="background" args={['#020617']} />
@@ -1095,167 +1084,52 @@ export const PlantScene: React.FC<PlantSceneProps> = ({
       {/* Only one major 3D model group is shown at a time for clear inspection. */}
       {activeModel === 'plant' &&
         (exploded ? (
+          // After failure: scatter the plant models to show a destroyed factory.
           <group position={[0, 0, -4.5]}>
-            {/* Chaotic explosion: fractured fire, jagged debris, dark smoke – not a single smooth egg */}
-            <group>
-              {/* Scorched ground */}
-              <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-                <ringGeometry args={[0.5, 4.5, 32]} />
-                <meshStandardMaterial color="#0a0a0a" roughness={1} metalness={0} />
-              </mesh>
+            <group position={[-2.3, 0.2, 0.8]} rotation={[0.25, 0.6, -0.3]}>
+              <CastnerCell
+                productionKg={productionKg}
+                currentA={currentA}
+                running={false}
+                onCathodeClick={onCathodeClick}
+                onAnodeClick={onAnodeClick}
+                onElectrolyteClick={onElectrolyteClick}
+              />
+            </group>
 
-              {/* Fractured fire core – multiple irregular blobs instead of one sphere */}
-              <mesh position={[0.3, 1.8, -0.2]} scale={[1.1, 1.6, 0.9]} rotation={[0.1, 0.2, 0]}>
-                <dodecahedronGeometry args={[1.4, 0]} />
-                <meshStandardMaterial
-                  color="#dc2626"
-                  emissive="#dc2626"
-                  emissiveIntensity={4}
-                  transparent
-                  opacity={0.9}
-                  roughness={0.35}
-                />
-              </mesh>
-              <mesh position={[-0.5, 2.2, 0.3]} scale={[0.8, 1.2, 1.0]} rotation={[0.3, -0.2, 0.1]}>
-                <octahedronGeometry args={[1.2, 0]} />
-                <meshStandardMaterial
-                  color="#ea580c"
-                  emissive="#f97316"
-                  emissiveIntensity={4.2}
-                  transparent
-                  opacity={0.9}
-                />
-              </mesh>
-              <mesh position={[0.4, 2.6, -0.4]} scale={[1.0, 0.9, 1.2]} rotation={[-0.2, 0.4, 0]}>
-                <tetrahedronGeometry args={[1.3, 0]} />
-                <meshStandardMaterial
-                  color="#f97316"
-                  emissive="#fbbf24"
-                  emissiveIntensity={3.2}
-                  transparent
-                  opacity={0.85}
-                />
-              </mesh>
+            <group position={[1.7, 0.3, -1.6]} rotation={[0.2, -0.5, 0.4]}>
+              <GasCollectors h2Kg={h2Kg} />
+            </group>
 
-              {/* Soft outer glow shell to punch up brightness without going back to an 'egg' */}
-              <mesh position={[0, 2.2, -0.1]} scale={[2.4, 1.8, 2.4]}>
-                <sphereGeometry args={[2.0, 32, 32]} />
+            <group position={[3.2, 0.2, 2.1]} rotation={[0.35, 0.7, -0.25]}>
+              <GlbModelWithFallback />
+            </group>
+
+            <group position={[-3.4, 0.15, 2.3]} rotation={[0.5, -0.3, 0.45]}>
+              <HighVoltageRoom />
+            </group>
+
+            {/* Gas / Na treatment tank lying on its side */}
+            <group position={[0.5, 0.4, -2.0]} rotation={[1.1, 0.2, -0.4]}>
+              <mesh position={[0, 1.4, 0]}>
+                <cylinderGeometry args={[1.3, 1.3, 2.8, 32]} />
+                <meshStandardMaterial
+                  color="#e5e7eb"
+                  transparent
+                  opacity={0.25}
+                  metalness={0}
+                  roughness={0.2}
+                />
+              </mesh>
+              <mesh position={[0, 1.1, 0]} scale={[1, 0.75, 1]}>
+                <cylinderGeometry args={[1.1, 1.1, 2.0, 32]} />
                 <meshStandardMaterial
                   color="#facc15"
-                  emissive="#facc15"
-                  emissiveIntensity={1.6}
                   transparent
-                  opacity={0.22}
+                  opacity={0.6}
+                  roughness={0.3}
                 />
               </mesh>
-
-              {/* Floating embers around the blast to make it feel fancier and more alive */}
-              <mesh position={[-1.6, 2.9, 0.4]} scale={[0.2, 0.2, 0.2]}>
-                <sphereGeometry args={[0.6, 16, 16]} />
-                <meshStandardMaterial
-                  color="#f97316"
-                  emissive="#f97316"
-                  emissiveIntensity={2.5}
-                  transparent
-                  opacity={0.85}
-                />
-              </mesh>
-              <mesh position={[1.2, 3.3, -0.6]} scale={[0.18, 0.18, 0.18]}>
-                <sphereGeometry args={[0.6, 16, 16]} />
-                <meshStandardMaterial
-                  color="#fb923c"
-                  emissive="#fb923c"
-                  emissiveIntensity={2.2}
-                  transparent
-                  opacity={0.9}
-                />
-              </mesh>
-              <mesh position={[0.1, 3.0, 1.1]} scale={[0.16, 0.16, 0.16]}>
-                <sphereGeometry args={[0.5, 16, 16]} />
-                <meshStandardMaterial
-                  color="#fed7aa"
-                  emissive="#fed7aa"
-                  emissiveIntensity={2}
-                  transparent
-                  opacity={0.9}
-                />
-              </mesh>
-
-              {/* Rising jagged flame tongues */}
-              <mesh position={[0, 3.2, 0]} rotation={[0.2, 0, 0]}>
-                <coneGeometry args={[1.8, 2.2, 8]} />
-                <meshStandardMaterial
-                  color="#b91c1c"
-                  emissive="#dc2626"
-                  emissiveIntensity={2.4}
-                  transparent
-                  opacity={0.55}
-                />
-              </mesh>
-
-              {/* Dark smoke plume – breaks the "egg" silhouette */}
-              <mesh position={[0.2, 3.8, 0.1]} scale={[2.2, 1.8, 2.0]} rotation={[0.1, 0.3, 0]}>
-                <dodecahedronGeometry args={[1.2, 0]} />
-                <meshStandardMaterial
-                  color="#1f2937"
-                  emissive="#374151"
-                  emissiveIntensity={0.3}
-                  transparent
-                  opacity={0.5}
-                  roughness={0.9}
-                />
-              </mesh>
-
-              {/* Jagged debris – angular, scattered */}
-              <mesh position={[-2.6, 0.3, 0.8]} rotation={[0.4, 0.5, 0.6]}>
-                <boxGeometry args={[1.2, 0.4, 0.8]} />
-                <meshStandardMaterial color="#0f172a" metalness={0.7} roughness={0.6} />
-              </mesh>
-              <mesh position={[2.2, 0.35, -0.6]} rotation={[0.2, -0.6, -0.4]}>
-                <boxGeometry args={[0.9, 0.35, 1.1]} />
-                <meshStandardMaterial color="#111827" metalness={0.6} roughness={0.7} />
-              </mesh>
-              <mesh position={[0.5, 0.4, 2.0]} rotation={[0.3, 0.2, -0.5]}>
-                <boxGeometry args={[1.4, 0.25, 0.7]} />
-                <meshStandardMaterial color="#1e293b" metalness={0.5} roughness={0.8} />
-              </mesh>
-              <mesh position={[-1.4, 0.5, -1.2]} rotation={[-0.3, 0.8, 0.2]}>
-                <boxGeometry args={[0.6, 0.5, 0.5]} />
-                <meshStandardMaterial color="#0c0a09" metalness={0.8} roughness={0.5} />
-              </mesh>
-              <mesh position={[1.8, 0.25, 1.2]} rotation={[0.1, -0.3, 0.7]}>
-                <boxGeometry args={[0.8, 0.2, 1.0]} />
-                <meshStandardMaterial color="#292524" metalness={0.6} roughness={0.6} />
-              </mesh>
-              <mesh position={[-0.8, 0.6, -0.5]} rotation={[0.5, 0, 0.4]}>
-                <boxGeometry args={[0.5, 0.45, 0.4]} />
-                <meshStandardMaterial color="#1c1917" metalness={0.7} roughness={0.5} />
-              </mesh>
-
-              {/* Gas / Na treatment tank explodes 1s after cell */}
-              {gasExploded && (
-                <group position={[4.4, 0.2, -4.0]} rotation={[0.7, 0.4, 0]}>
-                  <mesh position={[0, 1.4, 0]}>
-                    <cylinderGeometry args={[1.3, 1.3, 2.8, 32]} />
-                    <meshStandardMaterial
-                      color="#e5e7eb"
-                      transparent
-                      opacity={0.25}
-                      metalness={0}
-                      roughness={0.2}
-                    />
-                  </mesh>
-                  <mesh position={[0, 1.1, 0]} scale={[1, 0.75, 1]}>
-                    <cylinderGeometry args={[1.1, 1.1, 2.0, 32]} />
-                    <meshStandardMaterial
-                      color="#facc15"
-                      transparent
-                      opacity={0.6}
-                      roughness={0.3}
-                    />
-                  </mesh>
-                </group>
-              )}
             </group>
 
             <Billboard position={[0, 9.0, 0]}>
@@ -1267,12 +1141,12 @@ export const PlantScene: React.FC<PlantSceneProps> = ({
                 anchorX="center"
                 anchorY="middle"
               >
-                TEST FAILED – CELL EXPLODED
+                TEST FAILED – CELL DESTROYED
               </Text>
             </Billboard>
           </group>
         ) : (
-          // Center the integrated plant + gas purification + control room block on the grey pad
+          // Normal operating layout: integrated plant + gas purification + control room on the grey pad
           <group position={[0, 0, -4.5]}>
             {/* Core sodium production cell */}
             <CastnerCell

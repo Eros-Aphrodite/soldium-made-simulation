@@ -1,19 +1,12 @@
 import React from 'react';
-import {
-  Document,
-  Page,
-  Text,
-  View,
-  StyleSheet,
-  Svg,
-  Line,
-} from '@react-pdf/renderer';
+import { Document, Page, Text, View, StyleSheet, Svg, Line, Image } from '@react-pdf/renderer';
 import type { HistoryPoint } from './useElectrolysisSimulation';
 
 type ExperimentMetaForReport = {
   startedAt: string;
   endedAt?: string;
   initialNaohKg: number;
+  naohPurityPercent: number;
   initialVoltageV: number;
   initialPowerKW: number;
   initialCurrentA: number;
@@ -22,9 +15,16 @@ type ExperimentMetaForReport = {
   expectedHours?: number;
 };
 
+type ExperimentEventForReport = {
+  t_s: number;
+  kind: string;
+  description: string;
+};
+
 type Props = {
   experiment: ExperimentMetaForReport;
   series: HistoryPoint[];
+  events: ExperimentEventForReport[];
 };
 
 const styles = StyleSheet.create({
@@ -87,9 +87,31 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     fontWeight: 700,
   },
+  divider: {
+    marginTop: 8,
+    marginBottom: 8,
+    borderBottomWidth: 1,
+    borderColor: '#94a3b8',
+  },
+  diagram: {
+    marginTop: 4,
+    marginBottom: 8,
+    width: '100%',
+    height: 'auto',
+  },
+  graphGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginTop: 6,
+  },
+  graphBox: {
+    width: '48%',
+    marginBottom: 10,
+  },
 });
 
-export const ExperimentReport: React.FC<Props> = ({ experiment, series }) => {
+export const ExperimentReport: React.FC<Props> = ({ experiment, series, events }) => {
   const started = new Date(experiment.startedAt);
   const ended = experiment.endedAt ? new Date(experiment.endedAt) : new Date();
   const tLast = series.length ? series[series.length - 1].t : 0;
@@ -152,12 +174,116 @@ export const ExperimentReport: React.FC<Props> = ({ experiment, series }) => {
   const naMax = naVals.length ? Math.max(...naVals, 1e-6) : 1;
   const h2Min = h2Vals.length ? Math.min(...h2Vals, 0) : 0;
   const h2Max = h2Vals.length ? Math.max(...h2Vals, 1e-9) : 1;
+  const maxTempC = series.length ? Math.max(...series.map((p) => p.cellTempC ?? 0)) : 0;
 
   const graphWidth = 400;
   const graphHeight = 80;
+  const smallGraphWidth = 250;
+  const smallGraphHeight = 70;
 
   const timeTicks = 5;
   const timeTickLines = Array.from({ length: timeTicks + 1 }, (_, i) => t0 + ((tEnd - t0) * i) / timeTicks);
+
+  const sortedEvents = [...events].sort((a, b) => a.t_s - b.t_s);
+
+  const voltageVals = series.map((p) => (Math.abs(p.currentA) > 1e-9 ? p.powerW / p.currentA : 0));
+  const currentKA = series.map((p) => p.currentA / 1000);
+  const powerKW = series.map((p) => p.powerW / 1000);
+  const resistance_mOhm = series.map((p) => p.resistanceOhm * 1000);
+
+  const renderLineGraph = (opts: {
+    title: string;
+    unit: string;
+    values: number[];
+    color: string;
+    formatTick?: (v: number) => string;
+  }) => {
+    const left = 30;
+    const top = 10;
+    const plotW = smallGraphWidth - 60;
+    const plotH = smallGraphHeight;
+
+    const vMin = opts.values.length ? Math.min(...opts.values) : 0;
+    const vMax = opts.values.length ? Math.max(...opts.values) : 1;
+    const pad = (vMax - vMin) * 0.08;
+    const yMin = vMin - (Number.isFinite(pad) ? pad : 0);
+    const yMax = vMax + (Number.isFinite(pad) ? pad : 0);
+
+    const yTicks = 4;
+    const yTickVals = Array.from({ length: yTicks + 1 }, (_, i) => yMin + ((yMax - yMin) * i) / yTicks);
+
+    const tickFmt = opts.formatTick ?? ((v: number) => v.toFixed(2));
+
+    return (
+      <View style={styles.graphBox}>
+        <Text style={styles.smallText}>
+          {opts.title} ({opts.unit}) vs time
+        </Text>
+        <Svg width={smallGraphWidth} height={smallGraphHeight + 22}>
+          {/* Axes */}
+          <Line x1={left} y1={top} x2={left} y2={top + plotH} stroke="#64748b" strokeWidth={0.5} />
+          <Line
+            x1={left}
+            y1={top + plotH}
+            x2={left + plotW}
+            y2={top + plotH}
+            stroke="#64748b"
+            strokeWidth={0.5}
+          />
+
+          {/* Y ticks + labels */}
+          {yTickVals.map((yv, i) => {
+            const y = top + plotH - ((yv - yMin) / (yMax - yMin || 1)) * plotH;
+            return (
+              <React.Fragment key={`y-${opts.title}-${i}`}>
+                <Line x1={left - 2} y1={y} x2={left} y2={y} stroke="#94a3b8" strokeWidth={0.5} />
+                <Text style={styles.smallText} x={left - 4} y={y + 3} textAnchor="end">
+                  {tickFmt(yv)}
+                </Text>
+              </React.Fragment>
+            );
+          })}
+
+          {/* X ticks (minutes) */}
+          {timeTickLines.map((tv, i) => {
+            const x = left + ((tv - t0) / (tEnd - t0 || 1)) * plotW;
+            return (
+              <React.Fragment key={`x-${opts.title}-${i}`}>
+                <Line
+                  x1={x}
+                  y1={top + plotH}
+                  x2={x}
+                  y2={top + plotH + 2}
+                  stroke="#94a3b8"
+                  strokeWidth={0.5}
+                />
+                <Text style={styles.smallText} x={x - 6} y={top + plotH + 14}>
+                  {((tv - t0) / 60).toFixed(0)}
+                </Text>
+              </React.Fragment>
+            );
+          })}
+
+          {/* Curve */}
+          {opts.values.map((v, idx) => {
+            if (idx === 0) return null;
+            const prevV = opts.values[idx - 1];
+            const p = series[idx];
+            const prevP = series[idx - 1];
+            const x1 = left + ((prevP.t - t0) / (tEnd - t0 || 1)) * plotW;
+            const x2 = left + ((p.t - t0) / (tEnd - t0 || 1)) * plotW;
+            const y1 = top + plotH - ((prevV - yMin) / (yMax - yMin || 1)) * plotH;
+            const y2 = top + plotH - ((v - yMin) / (yMax - yMin || 1)) * plotH;
+            return <Line key={`${opts.title}-${idx}`} x1={x1} y1={y1} x2={x2} y2={y2} stroke={opts.color} strokeWidth={1} />;
+          })}
+
+          <Text style={styles.smallText} x={left + plotW / 2 - 14} y={top + plotH + 20}>
+            Time (min)
+          </Text>
+        </Svg>
+      </View>
+    );
+  };
 
   return (
     <Document>
@@ -176,25 +302,55 @@ export const ExperimentReport: React.FC<Props> = ({ experiment, series }) => {
           </Text>
         </View>
 
+        <View style={styles.divider} />
+
+        <Text style={styles.sectionTitle}>Experimental procedure (how this run was performed)</Text>
+        <Text style={styles.paragraph}>
+          1. The operator selected an NaOH feed mass, a voltage setpoint, and optionally a power target in the
+          simulation UI.
+        </Text>
+        <Text style={styles.paragraph}>
+          2. The experiment was started using the toolbar. The model then advanced in small time steps
+          (0.25&nbsp;s), continuously updating current, resistance, power, and product formation.
+        </Text>
+        <Text style={styles.paragraph}>
+          3. As Joule heating increased the cell temperature, the effective resistance rose, which in turn reduced
+          the current and slowed sodium production. Additional power would be required to keep production high.
+        </Text>
+        <Text style={styles.paragraph}>
+          4. Electrodes aged with cumulative charge and temperature; if safety limits were exceeded, the model
+          triggered a failure and destroyed-factory visualisation.
+        </Text>
+
+        <View style={styles.divider} />
+
         <Text style={styles.sectionTitle}>Purpose of the experiment</Text>
         <Text style={styles.paragraph}>
           To explore the behavior of a sodium electrolysis cell under different voltage, power, and NaOH
           feed conditions, and to visualise sodium / gas production and failure modes.
         </Text>
 
+        <View style={styles.divider} />
+
         <Text style={styles.sectionTitle}>Experimental equipment and reagents</Text>
         <Text style={styles.listItem}>• Castner-type sodium electrolysis cell (simulated).</Text>
         <Text style={styles.listItem}>• NaOH feed tank (up to 500 kg, batch).</Text>
-        <Text style={styles.listItem}>
-          • Gas handling and purification train (H₂ and Cl₂ visualised).
-        </Text>
+        <Text style={styles.listItem}>• Gas handling and purification train (H2 and Cl2 visualised).</Text>
         <Text style={styles.listItem}>
           • High-voltage power supply with voltage / power control (simulated).
         </Text>
 
+        <View style={styles.divider} />
+
         <Text style={styles.sectionTitle}>Initial conditions</Text>
         <Text style={styles.paragraph}>
-          NaOH feed: {experiment.initialNaohKg.toFixed(3)} kg
+          NaOH feed (as charged): {experiment.initialNaohKg.toFixed(3)} kg
+        </Text>
+        <Text style={styles.paragraph}>
+          NaOH purity: {experiment.naohPurityPercent.toFixed(1)} %
+        </Text>
+        <Text style={styles.paragraph}>
+          Effective NaOH for reaction: {((experiment.initialNaohKg * experiment.naohPurityPercent) / 100).toFixed(3)} kg
         </Text>
         <Text style={styles.paragraph}>
           Voltage setpoint: {experiment.initialVoltageV.toFixed(2)} V
@@ -206,13 +362,37 @@ export const ExperimentReport: React.FC<Props> = ({ experiment, series }) => {
           Initial cell current (approx): {experiment.initialCurrentA.toFixed(0)} A
         </Text>
 
+        <View style={styles.divider} />
+
         <Text style={styles.sectionTitle}>Time-series results (sampled)</Text>
         {series.slice(0, 25).map((p) => (
           <Text key={p.t} style={[styles.paragraph, styles.smallText]}>
-            t={p.t.toFixed(1)} s | Na={p.naKg.toFixed(4)} kg | H₂={p.h2Kg.toExponential(3)} kg | I=
+            t={p.t.toFixed(1)} s | Na={p.naKg.toFixed(4)} kg | H2={p.h2Kg.toExponential(3)} kg | I=
             {p.currentA.toFixed(0)} A | P={p.powerW.toFixed(0)} W
           </Text>
         ))}
+
+        <View style={styles.divider} />
+
+        <Text style={styles.sectionTitle}>Timeline of experiment (operator actions)</Text>
+        {sortedEvents.length === 0 ? (
+          <Text style={styles.paragraph}>No operator actions were recorded.</Text>
+        ) : (
+          <View style={styles.table}>
+            <View style={styles.tableRow}>
+              <Text style={styles.tableHeaderCell}>Time (min)</Text>
+              <Text style={styles.tableHeaderCell}>Event</Text>
+              <Text style={styles.tableHeaderCell}>Details</Text>
+            </View>
+            {sortedEvents.map((ev, idx) => (
+              <View key={idx} style={styles.tableRow}>
+                <Text style={styles.tableCell}>{(ev.t_s / 60).toFixed(2)}</Text>
+                <Text style={styles.tableCell}>{ev.kind}</Text>
+                <Text style={styles.tableCell}>{ev.description}</Text>
+              </View>
+            ))}
+          </View>
+        )}
       </Page>
 
       <Page size="A4" style={styles.page}>
@@ -221,7 +401,7 @@ export const ExperimentReport: React.FC<Props> = ({ experiment, series }) => {
           <View style={styles.tableRow}>
             <Text style={styles.tableHeaderCell}>Hour</Text>
             <Text style={styles.tableHeaderCell}>Na (kg/h)</Text>
-            <Text style={styles.tableHeaderCell}>H₂ (kg/h)</Text>
+            <Text style={styles.tableHeaderCell}>H2 (kg/h)</Text>
           </View>
           {hourly.slice(0, 30).map((row) => (
             <View key={row.hour} style={styles.tableRow}>
@@ -231,9 +411,9 @@ export const ExperimentReport: React.FC<Props> = ({ experiment, series }) => {
             </View>
           ))}
         </View>
-      </Page>
 
-      <Page size="A4" style={styles.page}>
+        <View style={styles.divider} />
+
         <Text style={styles.graphTitle}>Production graphs</Text>
 
         {/* Na graph */}
@@ -316,7 +496,7 @@ export const ExperimentReport: React.FC<Props> = ({ experiment, series }) => {
 
         {/* H2 graph */}
         <View>
-          <Text style={styles.smallText}>H₂ (kg) vs time</Text>
+          <Text style={styles.smallText}>H2 (kg) vs time</Text>
           <Svg width={graphWidth} height={graphHeight + 20}>
             <Line
               x1={30}
@@ -388,6 +568,22 @@ export const ExperimentReport: React.FC<Props> = ({ experiment, series }) => {
             })}
           </Svg>
         </View>
+
+        <View style={styles.divider} />
+
+        <Text style={styles.sectionTitle}>Electrical operating curves</Text>
+        <View style={styles.graphGrid}>
+          {renderLineGraph({ title: 'Voltage', unit: 'V', values: voltageVals, color: '#f59e0b', formatTick: (v) => v.toFixed(2) })}
+          {renderLineGraph({ title: 'Current', unit: 'kA', values: currentKA, color: '#ef4444', formatTick: (v) => v.toFixed(1) })}
+          {renderLineGraph({ title: 'Power', unit: 'kW', values: powerKW, color: '#8b5cf6', formatTick: (v) => v.toFixed(0) })}
+          {renderLineGraph({ title: 'Resistance', unit: 'mΩ', values: resistance_mOhm, color: '#10b981', formatTick: (v) => v.toFixed(3) })}
+        </View>
+      </Page>
+
+      <Page size="A4" style={styles.page}>
+        <Text style={styles.sectionTitle}>Experimental equipment drawings (schematic)</Text>
+        <Image src="/electrolysis-views.png" style={styles.diagram} />
+        <Image src="/electrolysis-dimensions.png" style={styles.diagram} />
       </Page>
 
       <Page size="A4" style={styles.page}>
@@ -412,6 +608,9 @@ export const ExperimentReport: React.FC<Props> = ({ experiment, series }) => {
               Minimum electrode health: {(minHealth * 100).toFixed(1)} %
             </Text>
             <Text style={styles.paragraph}>
+              Maximum simulated cell temperature: {maxTempC.toFixed(1)} °C
+            </Text>
+            <Text style={styles.paragraph}>
               {warningTime !== undefined
                 ? `First warning issued at: ${warningTime.toFixed(3)} h`
                 : 'Warning threshold not explicitly identified in history (instantaneous failure).'}
@@ -429,23 +628,31 @@ export const ExperimentReport: React.FC<Props> = ({ experiment, series }) => {
               Outcome: Experiment completed without triggering model failure criteria.
             </Text>
             <Text style={styles.paragraph}>
-              No failure analysis is required; simulated operation remained within safe limits.
+              Expected completion time from design calculation: {expected}
+            </Text>
+            <Text style={styles.paragraph}>
+              Actual simulated run time in this experiment: {runHours.toFixed(3)} h
+            </Text>
+            <Text style={styles.paragraph}>
+              Time error (simulated − expected): {delta}
             </Text>
           </View>
         )}
+
+        <View style={styles.divider} />
 
         <Text style={styles.sectionTitle}>Electrochemical principles and reactions</Text>
         <Text style={styles.paragraph}>
           The model is based on an idealised Castner-type cell. Key half-reactions include:
         </Text>
         <Text style={styles.listItem}>
-          • Cathode (sodium deposition): Na⁺ + e⁻ → Na(l)
+          • Cathode (sodium deposition): Na+ + e- → Na(l)
         </Text>
         <Text style={styles.listItem}>
-          • Cathode (hydrogen evolution): 2 H₂O + 2 e⁻ → H₂(g) + 2 OH⁻
+          • Cathode (hydrogen evolution): 2 H2O + 2 e- → H2(g) + 2 OH-
         </Text>
         <Text style={styles.listItem}>
-          • Anode (oxidation of anions): 2 Cl⁻ → Cl₂(g) + 2 e⁻ (or OH⁻ → O₂/H₂O in alkaline
+          • Anode (oxidation of anions): 2 Cl- → Cl2(g) + 2 e- (or OH- → O2/H2O in alkaline
           media).
         </Text>
         <Text style={styles.paragraph}>
@@ -460,7 +667,7 @@ export const ExperimentReport: React.FC<Props> = ({ experiment, series }) => {
           cell:
         </Text>
         <Text style={styles.listItem}>
-          • Cathode: electron-rich metal surface where Na⁺ and/or H₂O are reduced.
+          • Cathode: electron-rich metal surface where Na+ and/or H2O are reduced.
         </Text>
         <Text style={styles.listItem}>
           • Anode: electron-poor surface where anions are oxidised.

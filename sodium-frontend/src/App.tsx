@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { jsPDF } from 'jspdf';
+import { pdf } from '@react-pdf/renderer';
 import './App.css';
 import { PlantScene } from './PlantScene';
 import { useElectrolysisSimulation } from './useElectrolysisSimulation';
+import { ExperimentReport } from './ExperimentReport';
 
 type SimulationState = {
   time_hours: number;
@@ -22,6 +23,7 @@ type ExperimentMeta = {
   startedAt: string;
   endedAt?: string;
   initialNaohKg: number;
+  naohPurityPercent: number;
   initialVoltageV: number;
   initialPowerKW: number;
   initialCurrentA: number;
@@ -30,13 +32,27 @@ type ExperimentMeta = {
   expectedHours?: number;
 };
 
+type ExperimentEvent = {
+  t_s: number;
+  kind:
+    | 'start'
+    | 'end'
+    | 'pause'
+    | 'resume'
+    | 'voltageChange'
+    | 'powerChange'
+    | 'warning'
+    | 'explosion'
+    | 'reset';
+  description: string;
+};
+
 function App() {
   const [, setSim] = useState<SimulationState | null>(null);
   const [currentAInput, setCurrentAInput] = useState('4.0'); // now used as voltage input (V)
-  const [dtInput, setDtInput] = useState('1');
   const [naohMassInput, setNaohMassInput] = useState('10'); // kg
+  const [naohPurityInput, setNaohPurityInput] = useState('100'); // %
   const [powerKWInput, setPowerKWInput] = useState('0'); // optional power target
-  const [, setEstimatedHours] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [status, setStatus] = useState<string>('');
   const [reactionFocus, setReactionFocus] = useState<'none' | 'cathode' | 'anode' | 'electrolyte'>(
@@ -48,9 +64,11 @@ function App() {
   const [showFailureModal, setShowFailureModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [experiment, setExperiment] = useState<ExperimentMeta | null>(null);
+  const [events, setEvents] = useState<ExperimentEvent[]>([]);
   const explosionCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const explosionTriggerRef = useRef<((pos: { x: number; y: number }) => void) | null>(null);
   const prevExplodedRef = useRef(false);
+  const prevWarningRef = useRef(false);
 
   async function fetchState() {
     try {
@@ -65,9 +83,11 @@ function App() {
 
   async function handleReset() {
     try {
+      const purity = Math.min(Math.max(parseFloat(naohPurityInput) || 0, 0), 100) / 100;
       const body = {
         current_a: parseFloat(currentAInput) || 0,
-        dt_hours: parseFloat(dtInput) || 1,
+        dt_hours: 1,
+        naoh_mass_kg: (parseFloat(naohMassInput) || 0) * purity,
       };
       const res = await fetch(`${API_BASE}/api/reset`, {
         method: 'POST',
@@ -78,6 +98,9 @@ function App() {
       await res.json();
       setStatus('Plant reset.');
       await fetchState();
+      setIsRunning(false);
+      setExperiment(null);
+      setEvents([]);
     } catch (err) {
       setStatus('Reset failed. Check backend console.');
     }
@@ -106,7 +129,8 @@ function App() {
   async function handleEstimateTime() {
     try {
       const currentA = parseFloat(currentAInput) || 0;
-      const naohMass = parseFloat(naohMassInput) || 0;
+      const purity = Math.min(Math.max(parseFloat(naohPurityInput) || 0, 0), 100) / 100;
+      const naohMass = (parseFloat(naohMassInput) || 0) * purity;
       if (currentA <= 0 || naohMass <= 0) {
         setStatus('Enter positive current and NaOH mass.');
         return;
@@ -121,8 +145,7 @@ function App() {
         }),
       });
       if (!res.ok) throw new Error('time error');
-      const data = await res.json();
-      setEstimatedHours(data.hours.toFixed(2));
+      await res.json();
       setStatus('');
     } catch (err) {
       setStatus('Time estimate failed. Check backend console.');
@@ -160,7 +183,9 @@ function App() {
     voltageV,
     targetPowerKW: parseFloat(powerKWInput) || 0,
     mode: (parseFloat(powerKWInput) || 0) > 0 ? 'power' : 'voltage',
-    naohInitialKg: parseFloat(naohMassInput) || 0,
+    naohInitialKg:
+      (parseFloat(naohMassInput) || 0) *
+      (Math.min(Math.max(parseFloat(naohPurityInput) || 0, 0), 100) / 100),
     running: isRunning,
     dtSeconds: 0.25,
   });
@@ -169,16 +194,59 @@ function App() {
   const currentAForViz = localSim.currentA;
   const h2Kg = localSim.h2Kg;
 
+  const handleVoltageChange = (value: string) => {
+    setCurrentAInput(value);
+    if (!experiment) return;
+    const v = parseFloat(value);
+    if (!Number.isFinite(v)) return;
+    setEvents((prev) => [
+      ...prev,
+      {
+        t_s: localSim.time_s,
+        kind: 'voltageChange',
+        description: `Voltage setpoint changed to ${v.toFixed(2)} V`,
+      },
+    ]);
+  };
+
+  const handlePowerChange = (value: string) => {
+    setPowerKWInput(value);
+    if (!experiment) return;
+    const p = parseFloat(value);
+    if (!Number.isFinite(p)) return;
+    setEvents((prev) => [
+      ...prev,
+      {
+        t_s: localSim.time_s,
+        kind: 'powerChange',
+        description: `Power target changed to ${p.toFixed(2)} kW`,
+      },
+    ]);
+  };
+
   const handleStartExperiment = () => {
+    const purity = Math.min(Math.max(parseFloat(naohPurityInput) || 0, 0), 100);
     const now = new Date();
     setExperiment({
       startedAt: now.toISOString(),
       initialNaohKg: parseFloat(naohMassInput) || 0,
+      naohPurityPercent: purity,
       initialVoltageV: voltageV,
       initialPowerKW: parseFloat(powerKWInput) || 0,
       initialCurrentA: localSim.currentA,
       failed: false,
     });
+    setEvents([
+      {
+        t_s: 0,
+        kind: 'start',
+        description: `Experiment started with NaOH=${(parseFloat(naohMassInput) || 0).toFixed(
+          3,
+        )} kg @ purity=${purity.toFixed(1)} %, voltage=${voltageV.toFixed(
+          2,
+        )} V, power target=${(parseFloat(powerKWInput) || 0).toFixed(2)} kW`,
+      },
+    ]);
     setIsRunning(true);
   };
 
@@ -187,12 +255,13 @@ function App() {
 
     let expectedHours: number | undefined;
     try {
+      const purityFrac = Math.min(Math.max(parseFloat(naohPurityInput) || 0, 0), 100) / 100;
       const res = await fetch(`${API_BASE}/api/reaction_time`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           current_a: Math.max(localSim.currentA, 0),
-          naoh_mass_kg: parseFloat(naohMassInput) || 0,
+          naoh_mass_kg: (parseFloat(naohMassInput) || 0) * purityFrac,
           efficiency: 0.9,
         }),
       });
@@ -215,6 +284,7 @@ function App() {
         ...(prev ?? {
           startedAt: new Date().toISOString(),
           initialNaohKg: parseFloat(naohMassInput) || 0,
+          naohPurityPercent: Math.min(Math.max(parseFloat(naohPurityInput) || 0, 0), 100),
           initialVoltageV: voltageV,
           initialPowerKW: parseFloat(powerKWInput) || 0,
           initialCurrentA: localSim.currentA,
@@ -227,174 +297,34 @@ function App() {
       };
     });
 
+    setEvents((prev) => [
+      ...prev,
+      {
+        t_s: localSim.time_s,
+        kind: 'end',
+        description: 'Experiment ended by operator',
+      },
+    ]);
+
     setShowReportModal(true);
   };
 
   const handleDownloadReport = async () => {
     if (!experiment) return;
-    const doc = new jsPDF();
 
     const started = new Date(experiment.startedAt);
-    const ended = experiment.endedAt ? new Date(experiment.endedAt) : new Date();
-    const runSeconds = localSim.time_s;
-    const runHours = runSeconds / 3600;
-
-    let y = 12;
-    doc.setFontSize(14);
-    doc.text('Sodium Plant Electrolysis Experiment Report', 10, y);
-    y += 8;
-
-    doc.setFontSize(10);
-    doc.text(`Date (start): ${started.toLocaleString()}`, 10, y);
-    y += 5;
-    doc.text(`Date (end):   ${ended.toLocaleString()}`, 10, y);
-    y += 5;
-    doc.text(`Total run time: ${runSeconds.toFixed(1)} s (${runHours.toFixed(3)} h)`, 10, y);
-    y += 8;
-
-    doc.setFontSize(11);
-    doc.text('Purpose of the experiment', 10, y);
-    y += 5;
-    doc.setFontSize(9);
-    doc.text(
-      [
-        'To explore the behavior of a sodium electrolysis cell under different voltage, power,',
-        'and NaOH feed conditions, and to visualize sodium / gas production and failure modes.',
-      ],
-      10,
-      y,
-    );
-    y += 12;
-
-    doc.setFontSize(11);
-    doc.text('Experimental equipment and reagents', 10, y);
-    y += 5;
-    doc.setFontSize(9);
-    doc.text(
-      [
-        '- Castner-type sodium electrolysis cell (simulated)',
-        '- NaOH feed tank (up to 500 kg, batch)',
-        '- Gas handling and purification train (H₂ and Cl₂ visualised)',
-        '- High-voltage power supply with voltage / power control (simulated)',
-      ],
-      10,
-      y,
-    );
-    y += 18;
-
-    doc.setFontSize(11);
-    doc.text('Underlying principles', 10, y);
-    y += 5;
-    doc.setFontSize(9);
-    doc.text(
-      [
-        'The model approximates the Castner process: electric current drives Na⁺ reduction at the',
-        'cathode and oxidation of anions at the anode. Faraday\'s law links charge passed to the',
-        'amount of sodium and gas produced. Electrode health declines with cumulative charge, and',
-        'safety limits are enforced at ~50 kA and low electrode health, leading to failure.',
-      ],
-      10,
-      y,
-    );
-    y += 18;
-
-    doc.setFontSize(11);
-    doc.text('Initial conditions', 10, y);
-    y += 5;
-    doc.setFontSize(9);
-    doc.text(
-      [
-        `NaOH feed: ${experiment.initialNaohKg.toFixed(3)} kg`,
-        `Voltage setpoint: ${experiment.initialVoltageV.toFixed(2)} V`,
-        `Power target: ${experiment.initialPowerKW.toFixed(2)} kW`,
-        `Initial cell current (approx): ${experiment.initialCurrentA.toFixed(0)} A`,
-      ],
-      10,
-      y,
-    );
-    y += 18;
-
-    doc.setFontSize(11);
-    doc.text('Time-series results (sampled)', 10, y);
-    y += 5;
-    doc.setFontSize(9);
-
-    const rows: string[] = [];
-    const series = localSim.history;
-    const step = Math.max(1, Math.floor(series.length / 20));
-    for (let i = 0; i < series.length; i += step) {
-      const p = series[i];
-      rows.push(
-        `${p.t.toFixed(1)} s | Na=${p.naKg.toFixed(4)} kg | H2=${p.h2Kg.toExponential(
-          3,
-        )} kg | I=${p.currentA.toFixed(0)} A | P=${p.powerW.toFixed(0)} W`,
-      );
-    }
-    doc.text(rows, 10, y);
-    y += Math.min(rows.length * 4, 80);
-
-    doc.addPage();
-    y = 12;
-
-    doc.setFontSize(11);
-    doc.text('Failure analysis and comparison to expected values', 10, y);
-    y += 5;
-    doc.setFontSize(9);
-
-    if (experiment.failed) {
-      const reasonText =
-        experiment.failureReason ??
-        (localSim.warningReason === 'overCurrent'
-          ? 'Over-current beyond nominal limit.'
-          : localSim.warningReason === 'endOfLife'
-          ? 'Electrode end-of-life (health below threshold).'
-          : 'Failure triggered by model safety limits.');
-
-      const expected =
-        typeof experiment.expectedHours === 'number'
-          ? `${experiment.expectedHours.toFixed(3)} h`
-          : 'not available';
-
-      const delta =
-        typeof experiment.expectedHours === 'number'
-          ? `${(runHours - experiment.expectedHours).toFixed(3)} h`
-          : 'n/a';
-
-      doc.text(
-        [
-          `Outcome: FAILURE – plant destroyed in simulation.`,
-          `Primary cause (model): ${reasonText}`,
-          `Simulated run time to failure: ${runHours.toFixed(3)} h`,
-          `Expected time from design calculation: ${expected}`,
-          `Difference (simulated − expected): ${delta}`,
-        ],
-        10,
-        y,
-      );
-      y += 28;
-    } else {
-      doc.text(
-        [
-          'Outcome: Experiment completed without triggering model failure criteria.',
-          'No failure analysis is required; simulated operation remained within safe limits.',
-        ],
-        10,
-        y,
-      );
-      y += 16;
-    }
-
-    doc.text(
-      [
-        'Note: This report is generated from a simplified educational model. It must not be used as',
-        'engineering documentation or safety proof for any real sodium plant.',
-      ],
-      10,
-      y,
-    );
-
     const fileStamp = started.toISOString().replace(/[:T]/g, '-').split('.')[0];
-    doc.save(`sodium-experiment-report-${fileStamp}.pdf`);
+
+    const blob = await pdf(
+      <ExperimentReport experiment={experiment} series={localSim.history} events={events} />,
+    ).toBlob();
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `sodium-experiment-report-${fileStamp}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   // Explosion overlay effect (2D canvas, based on cell.html)
@@ -546,15 +476,46 @@ function App() {
       const h2 = c2.clientHeight || c2.height;
       t2({ x: w2 * 0.72, y: h2 * 0.7 });
     }, 1000);
+    if (experiment) {
+      setEvents((prev) => [
+        ...prev,
+        {
+          t_s: localSim.time_s,
+          kind: 'explosion',
+          description: 'Cell explosion triggered; destroyed‑factory sequence started',
+        },
+      ]);
+    }
     return () => clearTimeout(id);
   }, [localSim.exploded]);
 
-  // When the local simulation records an explosion, show a fullscreen failure summary with artwork.
+  // When the local simulation records an explosion, show a fullscreen failure summary after a delay.
   useEffect(() => {
-    if (localSim.exploded) {
+    if (!localSim.exploded) return;
+    const id = setTimeout(() => {
       setShowFailureModal(true);
-    }
+    }, 10_000);
+    return () => clearTimeout(id);
   }, [localSim.exploded]);
+
+  // Log when the model first enters a warning state.
+  useEffect(() => {
+    if (!experiment) {
+      prevWarningRef.current = localSim.warningActive;
+      return;
+    }
+    if (localSim.warningActive && !prevWarningRef.current) {
+      setEvents((prev) => [
+        ...prev,
+        {
+          t_s: localSim.time_s,
+          kind: 'warning',
+          description: 'Warning: electrode limit / over‑current reached',
+        },
+      ]);
+    }
+    prevWarningRef.current = localSim.warningActive;
+  }, [localSim.warningActive, localSim.time_s, experiment]);
 
   return (
     <div className="app-root">
@@ -563,13 +524,34 @@ function App() {
           Start experiment
         </button>
         <button
-          onClick={() => setIsRunning((r) => !r)}
+          onClick={() => {
+            setIsRunning((prev) => {
+              const next = !prev;
+              if (experiment) {
+                setEvents((evts) => [
+                  ...evts,
+                  {
+                    t_s: localSim.time_s,
+                    kind: next ? 'resume' : 'pause',
+                    description: next ? 'Experiment resumed' : 'Experiment paused',
+                  },
+                ]);
+              }
+              return next;
+            });
+          }}
           disabled={!experiment}
         >
           {isRunning ? 'Pause' : 'Resume'}
         </button>
         <button onClick={handleEndExperiment} disabled={!experiment}>
           End experiment
+        </button>
+        <button
+          onClick={handleDownloadReport}
+          disabled={!experiment}
+        >
+          Download report (PDF)
         </button>
       </div>
       {showIntroModal && (
@@ -680,7 +662,7 @@ function App() {
             <input
               type="number"
               value={currentAInput}
-              onChange={(e) => setCurrentAInput(e.target.value)}
+              onChange={(e) => handleVoltageChange(e.target.value)}
             />
           </label>
           <label>
@@ -689,19 +671,9 @@ function App() {
               type="number"
               step="0.1"
               value={powerKWInput}
-              onChange={(e) => setPowerKWInput(e.target.value)}
+              onChange={(e) => handlePowerChange(e.target.value)}
             />
           </label>
-          <label>
-            <span>Δt (hours)</span>
-            <input
-              type="number"
-              step="0.1"
-              value={dtInput}
-              onChange={(e) => setDtInput(e.target.value)}
-            />
-          </label>
-
           <label>
             <span>NaOH feed (kg, Castner batch)</span>
             <input
@@ -711,14 +683,26 @@ function App() {
               onChange={(e) => setNaohMassInput(e.target.value)}
             />
           </label>
+          <label>
+            <span>NaOH purity (%)</span>
+            <input
+              type="number"
+              step="0.1"
+              value={naohPurityInput}
+              onChange={(e) => setNaohPurityInput(e.target.value)}
+            />
+          </label>
+
+          <div className="button-row">
+            <button onClick={handleStartExperiment} disabled={isRunning}>
+              Start with this NaOH batch
+            </button>
+          </div>
 
           <div className="button-row">
             <button onClick={handleReset}>Reset</button>
             <button onClick={() => handleStep(1)}>Step</button>
             <button onClick={() => handleStep(10)}>+10 Steps</button>
-          </div>
-          <div className="button-row">
-            <button onClick={handleEstimateTime}>Estimate time</button>
             <button onClick={() => setShowGraphModal(true)}>View graphs</button>
           </div>
         </div>
