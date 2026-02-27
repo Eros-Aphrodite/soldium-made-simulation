@@ -6,6 +6,10 @@ type HistoryPoint = {
   t: number; // seconds
   naKg: number;
   h2Kg: number;
+  currentA: number;
+  powerW: number;
+  resistanceOhm: number;
+  electrodeHealth: number;
 };
 
 type SimState = {
@@ -150,7 +154,15 @@ export function useElectrolysisSimulation({
         // History for graph (keep last 400 samples)
         const history: HistoryPoint[] = [
           ...prev.history,
-          { t: time_s, naKg: naProducedKg, h2Kg },
+          {
+            t: time_s,
+            naKg: naProducedKg,
+            h2Kg,
+            currentA,
+            powerW,
+            resistanceOhm,
+            electrodeHealth: newHealth,
+          },
         ].slice(-400);
 
         return {

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { jsPDF } from 'jspdf';
 import './App.css';
 import { PlantScene } from './PlantScene';
 import { useElectrolysisSimulation } from './useElectrolysisSimulation';
@@ -17,6 +18,18 @@ type SimulationState = {
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 
+type ExperimentMeta = {
+  startedAt: string;
+  endedAt?: string;
+  initialNaohKg: number;
+  initialVoltageV: number;
+  initialPowerKW: number;
+  initialCurrentA: number;
+  failed: boolean;
+  failureReason?: string;
+  expectedHours?: number;
+};
+
 function App() {
   const [, setSim] = useState<SimulationState | null>(null);
   const [currentAInput, setCurrentAInput] = useState('4.0'); // now used as voltage input (V)
@@ -31,6 +44,10 @@ function App() {
   );
   const [activeModel] = useState<'plant' | 'hv-room'>('plant');
   const [showGraphModal, setShowGraphModal] = useState(false);
+  const [showIntroModal, setShowIntroModal] = useState(true);
+  const [showFailureModal, setShowFailureModal] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [experiment, setExperiment] = useState<ExperimentMeta | null>(null);
   const explosionCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const explosionTriggerRef = useRef<((pos: { x: number; y: number }) => void) | null>(null);
   const prevExplodedRef = useRef(false);
@@ -151,6 +168,234 @@ function App() {
   const productionKg = localSim.naProducedKg;
   const currentAForViz = localSim.currentA;
   const h2Kg = localSim.h2Kg;
+
+  const handleStartExperiment = () => {
+    const now = new Date();
+    setExperiment({
+      startedAt: now.toISOString(),
+      initialNaohKg: parseFloat(naohMassInput) || 0,
+      initialVoltageV: voltageV,
+      initialPowerKW: parseFloat(powerKWInput) || 0,
+      initialCurrentA: localSim.currentA,
+      failed: false,
+    });
+    setIsRunning(true);
+  };
+
+  const handleEndExperiment = async () => {
+    setIsRunning(false);
+
+    let expectedHours: number | undefined;
+    try {
+      const res = await fetch(`${API_BASE}/api/reaction_time`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          current_a: Math.max(localSim.currentA, 0),
+          naoh_mass_kg: parseFloat(naohMassInput) || 0,
+          efficiency: 0.9,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        expectedHours = data.hours;
+      }
+    } catch {
+      expectedHours = undefined;
+    }
+
+    setExperiment((prev) => {
+      const failureReason =
+        localSim.exploded && localSim.warningReason
+          ? localSim.warningReason === 'overCurrent'
+            ? 'Over-current above 50 kA'
+            : 'Electrode end-of-life'
+          : undefined;
+      return {
+        ...(prev ?? {
+          startedAt: new Date().toISOString(),
+          initialNaohKg: parseFloat(naohMassInput) || 0,
+          initialVoltageV: voltageV,
+          initialPowerKW: parseFloat(powerKWInput) || 0,
+          initialCurrentA: localSim.currentA,
+          failed: false,
+        }),
+        endedAt: new Date().toISOString(),
+        failed: localSim.exploded,
+        failureReason,
+        expectedHours,
+      };
+    });
+
+    setShowReportModal(true);
+  };
+
+  const handleDownloadReport = async () => {
+    if (!experiment) return;
+    const doc = new jsPDF();
+
+    const started = new Date(experiment.startedAt);
+    const ended = experiment.endedAt ? new Date(experiment.endedAt) : new Date();
+    const runSeconds = localSim.time_s;
+    const runHours = runSeconds / 3600;
+
+    let y = 12;
+    doc.setFontSize(14);
+    doc.text('Sodium Plant Electrolysis Experiment Report', 10, y);
+    y += 8;
+
+    doc.setFontSize(10);
+    doc.text(`Date (start): ${started.toLocaleString()}`, 10, y);
+    y += 5;
+    doc.text(`Date (end):   ${ended.toLocaleString()}`, 10, y);
+    y += 5;
+    doc.text(`Total run time: ${runSeconds.toFixed(1)} s (${runHours.toFixed(3)} h)`, 10, y);
+    y += 8;
+
+    doc.setFontSize(11);
+    doc.text('Purpose of the experiment', 10, y);
+    y += 5;
+    doc.setFontSize(9);
+    doc.text(
+      [
+        'To explore the behavior of a sodium electrolysis cell under different voltage, power,',
+        'and NaOH feed conditions, and to visualize sodium / gas production and failure modes.',
+      ],
+      10,
+      y,
+    );
+    y += 12;
+
+    doc.setFontSize(11);
+    doc.text('Experimental equipment and reagents', 10, y);
+    y += 5;
+    doc.setFontSize(9);
+    doc.text(
+      [
+        '- Castner-type sodium electrolysis cell (simulated)',
+        '- NaOH feed tank (up to 500 kg, batch)',
+        '- Gas handling and purification train (H₂ and Cl₂ visualised)',
+        '- High-voltage power supply with voltage / power control (simulated)',
+      ],
+      10,
+      y,
+    );
+    y += 18;
+
+    doc.setFontSize(11);
+    doc.text('Underlying principles', 10, y);
+    y += 5;
+    doc.setFontSize(9);
+    doc.text(
+      [
+        'The model approximates the Castner process: electric current drives Na⁺ reduction at the',
+        'cathode and oxidation of anions at the anode. Faraday\'s law links charge passed to the',
+        'amount of sodium and gas produced. Electrode health declines with cumulative charge, and',
+        'safety limits are enforced at ~50 kA and low electrode health, leading to failure.',
+      ],
+      10,
+      y,
+    );
+    y += 18;
+
+    doc.setFontSize(11);
+    doc.text('Initial conditions', 10, y);
+    y += 5;
+    doc.setFontSize(9);
+    doc.text(
+      [
+        `NaOH feed: ${experiment.initialNaohKg.toFixed(3)} kg`,
+        `Voltage setpoint: ${experiment.initialVoltageV.toFixed(2)} V`,
+        `Power target: ${experiment.initialPowerKW.toFixed(2)} kW`,
+        `Initial cell current (approx): ${experiment.initialCurrentA.toFixed(0)} A`,
+      ],
+      10,
+      y,
+    );
+    y += 18;
+
+    doc.setFontSize(11);
+    doc.text('Time-series results (sampled)', 10, y);
+    y += 5;
+    doc.setFontSize(9);
+
+    const rows: string[] = [];
+    const series = localSim.history;
+    const step = Math.max(1, Math.floor(series.length / 20));
+    for (let i = 0; i < series.length; i += step) {
+      const p = series[i];
+      rows.push(
+        `${p.t.toFixed(1)} s | Na=${p.naKg.toFixed(4)} kg | H2=${p.h2Kg.toExponential(
+          3,
+        )} kg | I=${p.currentA.toFixed(0)} A | P=${p.powerW.toFixed(0)} W`,
+      );
+    }
+    doc.text(rows, 10, y);
+    y += Math.min(rows.length * 4, 80);
+
+    doc.addPage();
+    y = 12;
+
+    doc.setFontSize(11);
+    doc.text('Failure analysis and comparison to expected values', 10, y);
+    y += 5;
+    doc.setFontSize(9);
+
+    if (experiment.failed) {
+      const reasonText =
+        experiment.failureReason ??
+        (localSim.warningReason === 'overCurrent'
+          ? 'Over-current beyond nominal limit.'
+          : localSim.warningReason === 'endOfLife'
+          ? 'Electrode end-of-life (health below threshold).'
+          : 'Failure triggered by model safety limits.');
+
+      const expected =
+        typeof experiment.expectedHours === 'number'
+          ? `${experiment.expectedHours.toFixed(3)} h`
+          : 'not available';
+
+      const delta =
+        typeof experiment.expectedHours === 'number'
+          ? `${(runHours - experiment.expectedHours).toFixed(3)} h`
+          : 'n/a';
+
+      doc.text(
+        [
+          `Outcome: FAILURE – plant destroyed in simulation.`,
+          `Primary cause (model): ${reasonText}`,
+          `Simulated run time to failure: ${runHours.toFixed(3)} h`,
+          `Expected time from design calculation: ${expected}`,
+          `Difference (simulated − expected): ${delta}`,
+        ],
+        10,
+        y,
+      );
+      y += 28;
+    } else {
+      doc.text(
+        [
+          'Outcome: Experiment completed without triggering model failure criteria.',
+          'No failure analysis is required; simulated operation remained within safe limits.',
+        ],
+        10,
+        y,
+      );
+      y += 16;
+    }
+
+    doc.text(
+      [
+        'Note: This report is generated from a simplified educational model. It must not be used as',
+        'engineering documentation or safety proof for any real sodium plant.',
+      ],
+      10,
+      y,
+    );
+
+    const fileStamp = started.toISOString().replace(/[:T]/g, '-').split('.')[0];
+    doc.save(`sodium-experiment-report-${fileStamp}.pdf`);
+  };
 
   // Explosion overlay effect (2D canvas, based on cell.html)
   useEffect(() => {
@@ -304,8 +549,128 @@ function App() {
     return () => clearTimeout(id);
   }, [localSim.exploded]);
 
+  // When the local simulation records an explosion, show a fullscreen failure summary with artwork.
+  useEffect(() => {
+    if (localSim.exploded) {
+      setShowFailureModal(true);
+    }
+  }, [localSim.exploded]);
+
   return (
     <div className="app-root">
+      <div className="experiment-toolbar">
+        <button onClick={handleStartExperiment} disabled={isRunning}>
+          Start experiment
+        </button>
+        <button
+          onClick={() => setIsRunning((r) => !r)}
+          disabled={!experiment}
+        >
+          {isRunning ? 'Pause' : 'Resume'}
+        </button>
+        <button onClick={handleEndExperiment} disabled={!experiment}>
+          End experiment
+        </button>
+      </div>
+      {showIntroModal && (
+        <div
+          className="intro-modal-backdrop"
+          onClick={() => {
+            setShowIntroModal(false);
+          }}
+        >
+          <div
+            className="intro-modal"
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+          >
+            <h2>Sodium Plant Simulation – Read Before You Start</h2>
+            <p className="intro-section-label">Purpose</p>
+            <ul>
+              <li>
+                Explore how an industrial sodium electrolysis cell responds to different voltage,
+                power, and NaOH feed settings.
+              </li>
+              <li>Visualize gas production, electrode wear, and dangerous failure modes.</li>
+            </ul>
+            <p className="intro-section-label">Constraints & model limits</p>
+            <ul>
+              <li>
+                The model is simplified and tuned for teaching – it does <strong>not</strong> match a
+                specific real plant design.
+              </li>
+              <li>
+                Current is limited to about 50 kA; electrode life, NaOH capacity (500 kg), and gas
+                output are approximate.
+              </li>
+              <li>Graphs show recent history only (most recent 400 samples) for clarity.</li>
+            </ul>
+            <p className="intro-section-label">Cautions</p>
+            <ul>
+              <li>
+                This simulation is for educational use only and must <strong>not</strong> be used for
+                engineering decisions or safety planning.
+              </li>
+              <li>
+                Failure events (warnings, countdown, explosions, and destroyed‑factory view) are
+                illustrative, not real safety guidance.
+              </li>
+              <li>
+                By continuing you acknowledge that this is a visualization tool only and carries no
+                warranty.
+              </li>
+            </ul>
+            <button
+              className="intro-primary-button"
+              onClick={() => {
+                setShowIntroModal(false);
+              }}
+            >
+              I understand – start experiment
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showFailureModal && (
+        <div
+          className="intro-modal-backdrop"
+          onClick={() => {
+            setShowFailureModal(false);
+          }}
+        >
+          <div
+            className="intro-modal"
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+          >
+            <h2>Experiment Failed – Plant Destroyed</h2>
+            <p>
+              The simulated cell has exceeded safe limits and suffered a catastrophic failure. The
+              scene below is a stylized view of the fully destroyed factory after the event.
+            </p>
+            <p className="intro-section-label">What this means</p>
+            <ul>
+              <li>Electrode life or current limit was exceeded for long enough to trigger failure.</li>
+              <li>Further operation is disabled until you reset and configure a safer operating point.</li>
+            </ul>
+            {/* Place your destroyed‑factory illustration in the public folder as `destroyed-factory.png`. */}
+            <div className="destroyed-factory-frame">
+              <img src="/destroyed-factory.png" alt="Destroyed sodium plant after explosion" />
+            </div>
+            <button
+              className="intro-primary-button"
+              onClick={() => {
+                setShowFailureModal(false);
+              }}
+            >
+              Close and review settings
+            </button>
+          </div>
+        </div>
+      )}
       <div className="sidebar">
         <h1 className="title">Sodium Plant Simulation</h1>
 
@@ -353,9 +718,6 @@ function App() {
             <button onClick={() => handleStep(10)}>+10 Steps</button>
           </div>
           <div className="button-row">
-            <button onClick={() => setIsRunning((r) => !r)}>
-              {isRunning ? 'Pause' : 'Run'}
-            </button>
             <button onClick={handleEstimateTime}>Estimate time</button>
             <button onClick={() => setShowGraphModal(true)}>View graphs</button>
           </div>
@@ -540,6 +902,34 @@ function App() {
                       <>
                         <line x1={0} y1={height - 20} x2={width - 40} y2={height - 20} stroke="#4b5563" />
                         <line x1={0} y1={0} x2={0} y2={height - 20} stroke="#4b5563" />
+                        {Array.from({ length: 6 }).map((_, i) => {
+                          const frac = i / 5;
+                          const tVal = t0 + (tLast - t0) * frac;
+                          const x = ((tVal - t0) / (tLast - t0 || 1)) * (width - 50);
+                          const y = height - 20;
+                          return (
+                            <g key={`na-x-${i}`}>
+                              <line x1={x} y1={y} x2={x} y2={y + 4} stroke="#6b7280" />
+                              <text x={x} y={y + 12} fill="#6b7280" fontSize={8} textAnchor="middle">
+                                {tVal.toFixed(0)}
+                              </text>
+                            </g>
+                          );
+                        })}
+                        {Array.from({ length: 5 }).map((_, i) => {
+                          const frac = i / 4;
+                          const v = minY + (maxY - minY) * frac;
+                          const normY = (v - minY) / (maxY - minY || 1);
+                          const y = height - 20 - normY * (height - 40);
+                          return (
+                            <g key={`na-y-${i}`}>
+                              <line x1={-3} y1={y} x2={0} y2={y} stroke="#6b7280" />
+                              <text x={-5} y={y + 3} fill="#6b7280" fontSize={8} textAnchor="end">
+                                {v.toFixed(3)}
+                              </text>
+                            </g>
+                          );
+                        })}
                         <path d={path} stroke="#22c55e" strokeWidth={2} fill="none" />
                         <text x={(width - 40) / 2} y={height - 4} fill="#9ca3af" fontSize={10}>
                           Time (s)
@@ -577,6 +967,34 @@ function App() {
                       <>
                         <line x1={0} y1={height - 20} x2={width - 40} y2={height - 20} stroke="#4b5563" />
                         <line x1={0} y1={0} x2={0} y2={height - 20} stroke="#4b5563" />
+                        {Array.from({ length: 6 }).map((_, i) => {
+                          const frac = i / 5;
+                          const tVal = t0 + (tLast - t0) * frac;
+                          const x = ((tVal - t0) / (tLast - t0 || 1)) * (width - 50);
+                          const y = height - 20;
+                          return (
+                            <g key={`h2-x-${i}`}>
+                              <line x1={x} y1={y} x2={x} y2={y + 4} stroke="#6b7280" />
+                              <text x={x} y={y + 12} fill="#6b7280" fontSize={8} textAnchor="middle">
+                                {tVal.toFixed(0)}
+                              </text>
+                            </g>
+                          );
+                        })}
+                        {Array.from({ length: 5 }).map((_, i) => {
+                          const frac = i / 4;
+                          const v = minY + (maxY - minY) * frac;
+                          const normY = (v - minY) / (maxY - minY || 1);
+                          const y = height - 20 - normY * (height - 40);
+                          return (
+                            <g key={`h2-y-${i}`}>
+                              <line x1={-3} y1={y} x2={0} y2={y} stroke="#6b7280" />
+                              <text x={-5} y={y + 3} fill="#6b7280" fontSize={8} textAnchor="end">
+                                {v.toExponential(1)}
+                              </text>
+                            </g>
+                          );
+                        })}
                         <path d={path} stroke="#38bdf8" strokeWidth={2} fill="none" />
                         <text x={(width - 40) / 2} y={height - 4} fill="#9ca3af" fontSize={10}>
                           Time (s)
@@ -589,7 +1007,180 @@ function App() {
                   })()}
                 </g>
               </svg>
+
+              <svg className="graph-svg">
+                <g transform="translate(40,10)">
+                  {(() => {
+                    const series = localSim.history;
+                    if (!series.length) return null;
+                    const t0 = series[0].t;
+                    const tLast = series[series.length - 1].t || t0 + 1;
+                    const width = 600;
+                    const height = 140;
+                    const currents = series.map((p) => Math.abs(p.currentA));
+                    const minY = 0;
+                    const maxY = Math.max(...currents, 1);
+                    const path = series
+                      .map((p, i) => {
+                        const x = ((p.t - t0) / (tLast - t0 || 1)) * (width - 50);
+                        const normY = (Math.abs(p.currentA) - minY) / (maxY - minY || 1);
+                        const y = height - 20 - normY * (height - 40);
+                        return `${i === 0 ? 'M' : 'L'}${x},${y}`;
+                      })
+                      .join(' ');
+                    return (
+                      <>
+                        <line x1={0} y1={height - 20} x2={width - 40} y2={height - 20} stroke="#4b5563" />
+                        <line x1={0} y1={0} x2={0} y2={height - 20} stroke="#4b5563" />
+                        {Array.from({ length: 6 }).map((_, i) => {
+                          const frac = i / 5;
+                          const tVal = t0 + (tLast - t0) * frac;
+                          const x = ((tVal - t0) / (tLast - t0 || 1)) * (width - 50);
+                          const y = height - 20;
+                          return (
+                            <g key={`i-x-${i}`}>
+                              <line x1={x} y1={y} x2={x} y2={y + 4} stroke="#6b7280" />
+                              <text x={x} y={y + 12} fill="#6b7280" fontSize={8} textAnchor="middle">
+                                {tVal.toFixed(0)}
+                              </text>
+                            </g>
+                          );
+                        })}
+                        {Array.from({ length: 5 }).map((_, i) => {
+                          const frac = i / 4;
+                          const v = minY + (maxY - minY) * frac;
+                          const normY = (v - minY) / (maxY - minY || 1);
+                          const y = height - 20 - normY * (height - 40);
+                          return (
+                            <g key={`i-y-${i}`}>
+                              <line x1={-3} y1={y} x2={0} y2={y} stroke="#6b7280" />
+                              <text x={-5} y={y + 3} fill="#6b7280" fontSize={8} textAnchor="end">
+                                {v.toFixed(0)}
+                              </text>
+                            </g>
+                          );
+                        })}
+                        <path d={path} stroke="#f97316" strokeWidth={2} fill="none" />
+                        <text x={(width - 40) / 2} y={height - 4} fill="#9ca3af" fontSize={10}>
+                          Time (s)
+                        </text>
+                        <text x={-40} y={10} fill="#9ca3af" fontSize={10}>
+                          Current (A)
+                        </text>
+                      </>
+                    );
+                  })()}
+                </g>
+              </svg>
+
+              <svg className="graph-svg">
+                <g transform="translate(40,10)">
+                  {(() => {
+                    const series = localSim.history;
+                    if (!series.length) return null;
+                    const t0 = series[0].t;
+                    const tLast = series[series.length - 1].t || t0 + 1;
+                    const width = 600;
+                    const height = 140;
+                    const healths = series.map((p) => p.electrodeHealth * 100);
+                    const minY = 0;
+                    const maxY = 100;
+                    const path = series
+                      .map((p, i) => {
+                        const x = ((p.t - t0) / (tLast - t0 || 1)) * (width - 50);
+                        const normY = ((p.electrodeHealth * 100) - minY) / (maxY - minY || 1);
+                        const y = height - 20 - normY * (height - 40);
+                        return `${i === 0 ? 'M' : 'L'}${x},${y}`;
+                      })
+                      .join(' ');
+                    return (
+                      <>
+                        <line x1={0} y1={height - 20} x2={width - 40} y2={height - 20} stroke="#4b5563" />
+                        <line x1={0} y1={0} x2={0} y2={height - 20} stroke="#4b5563" />
+                        {Array.from({ length: 6 }).map((_, i) => {
+                          const frac = i / 5;
+                          const tVal = t0 + (tLast - t0) * frac;
+                          const x = ((tVal - t0) / (tLast - t0 || 1)) * (width - 50);
+                          const y = height - 20;
+                          return (
+                            <g key={`h-x-${i}`}>
+                              <line x1={x} y1={y} x2={x} y2={y + 4} stroke="#6b7280" />
+                              <text x={x} y={y + 12} fill="#6b7280" fontSize={8} textAnchor="middle">
+                                {tVal.toFixed(0)}
+                              </text>
+                            </g>
+                          );
+                        })}
+                        {Array.from({ length: 5 }).map((_, i) => {
+                          const frac = i / 4;
+                          const v = minY + (maxY - minY) * frac;
+                          const normY = (v - minY) / (maxY - minY || 1);
+                          const y = height - 20 - normY * (height - 40);
+                          return (
+                            <g key={`h-y-${i}`}>
+                              <line x1={-3} y1={y} x2={0} y2={y} stroke="#6b7280" />
+                              <text x={-5} y={y + 3} fill="#6b7280" fontSize={8} textAnchor="end">
+                                {v.toFixed(0)}
+                              </text>
+                            </g>
+                          );
+                        })}
+                        <path d={path} stroke="#a855f7" strokeWidth={2} fill="none" />
+                        <text x={(width - 40) / 2} y={height - 4} fill="#9ca3af" fontSize={10}>
+                          Time (s)
+                        </text>
+                        <text x={-60} y={10} fill="#9ca3af" fontSize={10}>
+                          Electrode health (%)
+                        </text>
+                      </>
+                    );
+                  })()}
+                </g>
+              </svg>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showReportModal && experiment && (
+        <div
+          className="intro-modal-backdrop"
+          onClick={() => {
+            setShowReportModal(false);
+          }}
+        >
+          <div
+            className="intro-modal"
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+          >
+            <h2>Experiment report preview</h2>
+            <p className="intro-section-label">Summary</p>
+            <ul>
+              <li>Start: {new Date(experiment.startedAt).toLocaleString()}</li>
+              {experiment.endedAt && <li>End: {new Date(experiment.endedAt).toLocaleString()}</li>}
+              <li>NaOH feed: {experiment.initialNaohKg.toFixed(3)} kg</li>
+              <li>Voltage: {experiment.initialVoltageV.toFixed(2)} V</li>
+              <li>Power target: {experiment.initialPowerKW.toFixed(2)} kW</li>
+              <li>Initial current (approx): {experiment.initialCurrentA.toFixed(0)} A</li>
+              <li>
+                Outcome:{' '}
+                {experiment.failed
+                  ? `FAILED – ${experiment.failureReason ?? 'model safety limits exceeded'}`
+                  : 'Completed without triggering model failure'}
+              </li>
+            </ul>
+            <p className="intro-section-label">Data included in PDF</p>
+            <ul>
+              <li>Purpose, equipment, reagents, and principles of the experiment</li>
+              <li>Detailed initial conditions and run time</li>
+              <li>Sampled table of Na and H₂ production, current, and power vs time</li>
+              <li>Failure analysis with comparison to expected reaction time (if failure occurred)</li>
+            </ul>
+            <button className="intro-primary-button" onClick={handleDownloadReport}>
+              Download PDF report
+            </button>
           </div>
         </div>
       )}
